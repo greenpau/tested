@@ -1,0 +1,41 @@
+<!--
+  Copyright 2026 Paul Greenberg greenpau@outlook.com
+  Licensed under the Apache License, Version 2.0.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>{{.Title}} index</title>
+<style>
+{{template "report.css"}}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#artifact-list">Skip to available artifacts</a>
+<main class="index-shell">
+<header class="index-header">
+<div class="index-title-row">
+<div>
+<p class="eyebrow">tested · Report bundle</p>
+<h1>{{.Title}}</h1>
+<p class="index-subtitle">A coherent offline view of test, coverage, automation, and raw execution evidence.</p>
+</div>
+<strong class="status-pill {{.Outcome}}">{{.Outcome}}</strong>
+</div>
+<dl class="index-metrics" aria-label="Report summary">
+<div class="index-metric"><dt>Packages</dt><dd>{{.Packages}}</dd><small>analyzed packages</small></div>
+<div class="index-metric"><dt>Tests</dt><dd>{{.Tests}}</dd><small>test occurrences</small></div>
+{{with .Coverage}}<div class="index-metric"><dt>Weighted coverage</dt><dd>{{.Percentage}}</dd><small>{{.Covered}} / {{.Statements}} statements</small></div>{{else}}<div class="index-metric"><dt>Weighted coverage</dt><dd>—</dd><small>not available</small></div>{{end}}
+<div class="index-metric"><dt>Artifacts</dt><dd>{{.Artifacts}}</dd><small>linked bundle files</small></div>
+</dl>
+</header>
+<section id="artifact-list" class="artifact-section" aria-labelledby="artifacts-heading">
+<header class="artifact-section-header"><h2 id="artifacts-heading">Available artifacts</h2><p>Open a human report or inspect the fixed machine and evidence formats.</p></header>
+{{if .Links}}<ul class="artifact-grid">{{range .Links}}<li><a class="artifact-card" href="{{.Name}}"><span class="artifact-kind" aria-hidden="true">{{.Format}}</span><span class="artifact-copy"><span class="artifact-label">{{.Label}}</span><span class="artifact-description">{{.Description}}</span></span><span class="artifact-arrow" aria-hidden="true">→</span></a></li>{{end}}</ul>{{else}}<p class="index-empty">No linked reports are available.</p>{{end}}
+</section>
+</main>
+</body>
+</html>

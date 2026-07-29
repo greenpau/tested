@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scripts and Automation"
+  short_description: "Operate tested build, test, and release workflows"
+  default_prompt: "Use $scripts-and-automation to choose or update tested automation and CI workflows."

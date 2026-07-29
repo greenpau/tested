@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coverage Pipeline"
+  short_description: "Implement accurate Go coverage processing"
+  default_prompt: "Use $implementation-coverage to change coverage profiles, totals, or coverage reports."

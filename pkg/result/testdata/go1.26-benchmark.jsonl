@@ -1,0 +1,15 @@
+{"Time":"2026-07-29T13:12:12.668857-04:00","Action":"start","Package":"example.com/tested-fixture"}
+{"Time":"2026-07-29T13:12:12.874913-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"goos: darwin\n"}
+{"Time":"2026-07-29T13:12:12.874948-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"goarch: arm64\n"}
+{"Time":"2026-07-29T13:12:12.87495-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"pkg: example.com/tested-fixture\n"}
+{"Time":"2026-07-29T13:12:12.874961-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"cpu: Apple M2\n"}
+{"Time":"2026-07-29T13:12:12.874971-04:00","Action":"run","Package":"example.com/tested-fixture","Test":"BenchmarkSum"}
+{"Time":"2026-07-29T13:12:12.874972-04:00","Action":"output","Package":"example.com/tested-fixture","Test":"BenchmarkSum","Output":"=== RUN   BenchmarkSum\n"}
+{"Time":"2026-07-29T13:12:12.874978-04:00","Action":"output","Package":"example.com/tested-fixture","Test":"BenchmarkSum","Output":"BenchmarkSum\n"}
+{"Time":"2026-07-29T13:12:12.87509-04:00","Action":"output","Package":"example.com/tested-fixture","Test":"BenchmarkSum","Output":"BenchmarkSum     \t       1\t       167.0 ns/op\n"}
+{"Time":"2026-07-29T13:12:12.875392-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"BenchmarkSum     \t       1\t       417.0 ns/op\n"}
+{"Time":"2026-07-29T13:12:12.87589-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"BenchmarkSum-2   \t       1\t       750.0 ns/op\n"}
+{"Time":"2026-07-29T13:12:12.876097-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"BenchmarkSum-2   \t       1\t        84.00 ns/op\n"}
+{"Time":"2026-07-29T13:12:12.876122-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"PASS\n"}
+{"Time":"2026-07-29T13:12:12.876717-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"ok  \texample.com/tested-fixture\t0.207s\n"}
+{"Time":"2026-07-29T13:12:12.876724-04:00","Action":"pass","Package":"example.com/tested-fixture","Elapsed":0.208}

@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  minimum-go:
+    name: Go 1.25 minimum compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go 1.25
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.25.x"
+          cache: false
+
+      - name: Verify minimum toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(go env GOVERSION)" == go1.25.* ]]
+          [[ "$(go env GOTOOLCHAIN)" == "local" ]]
+
+      - name: Vet with the minimum Go version
+        run: go vet ./...
+
+      - name: Test with the minimum Go version
+        run: go test ./...
+
+      - name: Test Go 1.25 fixture compatibility
+        working-directory: testdata/fixture
+        run: go test ./...
+
+      - name: Build with the minimum Go version
+        run: CGO_ENABLED=0 go build ./...
+
+      - name: Self-test and validate the Go 1.25 coverage bundle
+        run: make self-test
+
+      - name: Validate repository skills with the minimum Go version
+        run: make skills-check
+
+  go-conformance:
+    name: Go 1.26 conformance and end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go 1.26
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.x"
+          cache: false
+
+      - name: Verify primary toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(go env GOVERSION)" == go1.26.* ]]
+          [[ "$(go env GOTOOLCHAIN)" == "local" ]]
+
+      - name: Check whitespace and Go formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nI -E '[[:blank:]]+$' -- .; then
+            echo "Tracked files contain trailing whitespace."
+            exit 1
+          fi
+          unformatted="$(gofmt -l $(find . -type f -name '*.go' \
+            -not -path './.git/*' -not -path './.coverage/*'))"
+          if [[ -n "$unformatted" ]]; then
+            echo "The following Go files require gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet Go packages
+        run: go vet ./...
+
+      - name: Test Go packages
+        run: go test ./...
+
+      - name: Test Go packages with the race detector
+        run: go test -race ./...
+
+      - name: Test order independence
+        run: go test ./... -shuffle=on -count=3
+
+      - name: Self-test and validate the root coverage bundle
+        run: make self-test
+
+      - name: Run end-to-end fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          make e2e
+          if ! grep -q '"Action":"build-fail"' \
+            testdata/buildfail/.coverage/test_output.jsonl; then
+            echo "Go 1.26 build-failure fixture emitted no BuildEvent."
+            exit 1
+          fi
+          if ! grep -q '"ImportPath":' \
+            testdata/buildfail/.coverage/test_output.jsonl; then
+            echo "BuildEvent fixture is missing ImportPath."
+            exit 1
+          fi
+
+      - name: Cross-compile portable profiles
+        run: make cross-build
+
+      - name: Validate repository skill metadata and route graph
+        run: make skills-check
+
+  native-lifecycle:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      GOTOOLCHAIN: local
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS process-tree runtime
+            os: macos-latest
+          - name: Windows process-tree runtime
+            os: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go 1.26
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.x"
+          cache: false
+
+      - name: Verify native toolchain
+        run: go env GOOS GOARCH GOVERSION
+
+      - name: Exercise native runner lifecycle
+        run: go test -count=1 ./pkg/runner
+
+      - name: Test and build complete native module
+        run: |
+          go test ./...
+          go build ./...

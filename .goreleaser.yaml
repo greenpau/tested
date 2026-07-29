@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.17.1/www/docs/static/schema.json
+version: 2
+
+project_name: tested
+
+release:
+  github:
+    owner: greenpau
+    name: tested
+  draft: false
+  prerelease: auto
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+builds:
+  - id: tested
+    main: .
+    binary: tested
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+      - -mod=readonly
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w
+      - -X main.appVersion={{ .Version }}
+      - -X main.gitBranch={{ .Branch }}
+      - -X main.gitCommit={{ .FullCommit }}
+      - -X main.buildUser=goreleaser
+      - -X main.buildDate={{ .CommitDate }}
+
+archives:
+  - id: tested
+    ids:
+      - tested
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - SECURITY.md
+      - USER_GUIDE.md
+
+nfpms:
+  - id: tested
+    ids:
+      - tested
+    package_name: tested
+    vendor: greenpau
+    homepage: https://github.com/greenpau/tested
+    maintainer: "Paul Greenberg <greenpau@outlook.com>"
+    description: Go test coverage and reporting in one command
+    license: Apache-2.0
+    bindir: /usr/bin
+    formats:
+      - deb
+      - rpm
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/tested/copyright
+        packager: deb
+        file_info:
+          mode: 0644
+      - src: LICENSE
+        dst: /usr/share/licenses/tested/LICENSE
+        packager: rpm
+        file_info:
+          mode: 0644
+      - src: README.md
+        dst: /usr/share/doc/tested/README.md
+        file_info:
+          mode: 0644
+      - src: SECURITY.md
+        dst: /usr/share/doc/tested/SECURITY.md
+        file_info:
+          mode: 0644
+      - src: USER_GUIDE.md
+        dst: /usr/share/doc/tested/USER_GUIDE.md
+        file_info:
+          mode: 0644
+    file_name_template: >-
+      {{ .PackageName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs?:"
+      - "^tests?:"
+      - "^skills:"
+      - "^github:"
+      - "^ops:"
+      - "^release"

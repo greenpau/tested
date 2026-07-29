@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coding Directives"
+  short_description: "Apply tested Go implementation standards"
+  default_prompt: "Use $coding-directives to implement or review Go code in tested."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Pipeline"
+  short_description: "Implement Go test execution and event handling"
+  default_prompt: "Use $implementation-test-pipeline to change tested execution, event parsing, or result aggregation."

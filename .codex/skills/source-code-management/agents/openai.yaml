@@ -1,0 +1,4 @@
+interface:
+  display_name: "Source Code Management"
+  short_description: "Draft tested-compliant commit messages"
+  default_prompt: "Use $source-code-management to create or review a tested commit message."

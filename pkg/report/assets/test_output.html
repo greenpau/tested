@@ -1,0 +1,187 @@
+<!--
+  Copyright 2026 Paul Greenberg greenpau@outlook.com
+  Licensed under the Apache License, Version 2.0.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>{{.Title}}</title>
+<style>
+{{template "report.css"}}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#report-content">Skip to report content</a>
+<div class="report-shell">
+<header class="page-header">
+<div class="title-row">
+<div class="title-copy">
+<p class="eyebrow">tested · Go test report</p>
+<h1>{{.Title}}</h1>
+<p class="subtitle">Package, test occurrence, diagnostic, and weighted coverage evidence.</p>
+</div>
+<strong class="status-pill {{.Outcome}}">{{.Outcome}}</strong>
+</div>
+<dl class="run-facts" aria-label="Run facts">
+<div><dt>Child exit</dt><dd>{{with .Assessment}}{{if .ChildExitKnown}}{{$.Metadata.ExitCode}}{{if .ChildExitInferred}} (inferred){{end}}{{else}}unavailable{{end}}{{else}}{{$.Metadata.ExitCode}}{{end}}</dd></div>
+<div><dt>Capture</dt><dd>{{with .Assessment}}{{if .EvidenceIncomplete}}incomplete{{else}}complete{{end}}{{else}}not assessed{{end}}</dd></div>
+<div><dt>Finalization</dt><dd>{{if .Finalized}}finalized{{else}}not finalized{{end}}</dd></div>
+{{if or .Metadata.Signal .Metadata.Interrupted}}<div><dt>Termination</dt><dd>{{if .Metadata.Signal}}signal {{.Metadata.Signal}}{{end}}{{if .Metadata.Interrupted}}{{if .Metadata.Signal}} · {{end}}cancelled{{if .Metadata.Cancellation}} ({{.Metadata.Cancellation}}{{if .Metadata.CancellationSignal}}: {{.Metadata.CancellationSignal}}{{end}}, projected exit {{.Metadata.RecommendedExitCode}}){{end}}{{end}}</dd></div>{{end}}
+</dl>
+<dl class="summary-grid" aria-label="Result counts">
+{{with .Coverage}}<div class="metric"><dt>Weighted coverage</dt><dd>{{.Percentage}}</dd><small>{{.Covered}} / {{.Statements}} statements · {{.Mode}}</small></div>{{end}}
+<div class="metric"><dt>Packages</dt><dd>{{.Summary.Packages.Total}}</dd><small>{{.Summary.Packages.Passed}} passed</small></div>
+<div class="metric"><dt>Tests</dt><dd>{{.Summary.Tests.Total}}</dd><small>all occurrences</small></div>
+<div class="metric"><dt>Passed</dt><dd class="passed">{{.Summary.Tests.Passed}}</dd><small>test occurrences</small></div>
+<div class="metric"><dt>Failed</dt><dd class="failed">{{.Summary.Tests.Failed}}</dd><small>test occurrences</small></div>
+<div class="metric"><dt>Skipped</dt><dd class="skipped">{{.Summary.Tests.Skipped}}</dd><small>test occurrences</small></div>
+<div class="metric"><dt>Benchmarks</dt><dd class="passed">{{.Summary.Tests.Benchmarked}}</dd><small>completed occurrences</small></div>
+<div class="metric"><dt>Incomplete</dt><dd class="incomplete">{{.Summary.Tests.Incomplete}}</dd><small>test occurrences</small></div>
+<div class="metric"><dt>Build failures</dt><dd class="failed">{{.Summary.BuildFailures}}</dd><small>package builds</small></div>
+</dl>
+</header>
+{{with .Assessment}}
+<section class="section-card" aria-labelledby="assessment-heading">
+<header class="section-header">
+<h2 id="assessment-heading">Run assessment</h2>
+<p>Authority and integrity checks applied to this projection.</p>
+</header>
+<div class="section-body">
+<dl class="assessment-list">
+<div><dt>Child process</dt><dd>{{if .ChildExitKnown}}Exit status recorded{{if .ChildExitInferred}} (inferred){{end}}{{else}}Exit status unavailable{{end}}</dd></div>
+<div><dt>Raw capture</dt><dd>{{if .EvidenceIncomplete}}Incomplete; inspect raw evidence and diagnostics{{else}}Complete{{end}}</dd></div>
+{{with .CoveragePolicy}}<div><dt>Coverage policy</dt><dd>Minimum {{.Minimum}}%; actual {{if .Available}}{{.Actual}}% ({{.Covered}} / {{.Statements}} weighted statements){{else}}unavailable{{end}} — {{if .Satisfied}}satisfied{{else}}not satisfied{{end}}</dd></div>{{end}}
+</dl>
+{{if .Issues}}<ul class="issue-list">{{range .Issues}}<li><strong>{{.Kind}}</strong>: {{.Message}}{{if .Fatal}} (fatal){{end}}</li>{{end}}</ul>{{end}}
+</div>
+</section>
+{{end}}
+{{if or .Summary.Incomplete .Summary.TotalOutputTruncated .Summary.NormalizedEntriesTruncated .Summary.NormalizedBytesTruncated}}
+<section class="section-card" aria-labelledby="resource-heading">
+<header class="section-header"><h2 id="resource-heading">Projection resource limits</h2><p>Bounded presentation state retained from authoritative raw evidence.</p></header>
+<div class="section-body">
+{{if .Summary.TotalOutputTruncated}}<p class="notice">Derived output retained {{.Summary.TotalOutputRetainedBytes}} of {{.Summary.TotalOutputBytes}} bytes. The raw <code>test_output.jsonl</code> evidence remains authoritative.</p>{{end}}
+{{if .Summary.NormalizedEntriesTruncated}}<p class="notice">Normalized entries retained {{.Summary.NormalizedEntriesRetained}} of {{.Summary.NormalizedEntries}} observed entries. {{if .Summary.Incomplete}}The semantic result is incomplete.{{else}}Presentation entries were omitted; the raw JSONL remains authoritative.{{end}}</p>{{end}}
+{{if .Summary.NormalizedBytesTruncated}}<p class="notice">Normalized identity and metadata strings retained {{.Summary.NormalizedBytesRetained}} of {{.Summary.NormalizedBytes}} observed bytes. {{if .Summary.Incomplete}}The semantic result is incomplete.{{else}}Presentation strings were omitted; the raw JSONL remains authoritative.{{end}}</p>{{end}}
+{{if and .Summary.Incomplete (not .Summary.NormalizedEntriesTruncated) (not .Summary.NormalizedBytesTruncated)}}<p class="notice">The normalized semantic result is incomplete. Inspect integrity diagnostics and raw evidence.</p>{{end}}
+</div>
+</section>
+{{end}}
+
+<div class="toolbar-wrap">
+<div class="toolbar" role="search" aria-label="Filter test results">
+<label class="control">Search results <input id="search" type="search" placeholder="Package, test, status, or output" autocomplete="off"></label>
+<label class="control">Status <select id="status"><option value="">All statuses</option><option value="failed">Failed</option><option value="incomplete">Incomplete</option><option value="skipped">Skipped</option><option value="passed">Passed</option><option value="unknown">Unknown</option></select></label>
+</div>
+<p id="match-count" class="meta" aria-live="polite"></p>
+</div>
+
+<main id="report-content" class="report-main">
+<section class="report-section" aria-labelledby="packages-heading">
+<div class="section-title"><h2 id="packages-heading">Packages and test occurrences</h2><p>Passing output is collapsed by default; failed and incomplete output stays open.</p></div>
+{{if .Packages}}
+{{range .Packages}}
+<article class="package-card filterable" data-status="{{.StatusClass}}" data-search="{{.Name}} {{.Status}}">
+<header class="package-header">
+<div class="heading">
+<div><h3>{{.Name}}</h3><p>{{if .DurationKnown}}duration {{.Duration}}{{if .DurationSource}} ({{.DurationSource}}){{end}}{{else}}duration unavailable{{if .DurationSource}} ({{.DurationSource}}){{end}}{{end}}{{if .Cached}} · cached{{end}}{{if .NoTests}} · no tests{{end}}{{if .FailedBuild}} · failed build {{.FailedBuild}}{{end}}{{if .IncompleteReason}} · {{.IncompleteReason}}{{end}}</p></div>
+<strong class="status-pill {{.StatusClass}}">{{.Status}}</strong>
+</div>
+</header>
+<div class="package-body">
+{{if or .Output .OutputTruncated}}<details><summary>Package output</summary>{{if .Output}}<pre>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes. Inspect test_output.jsonl for complete evidence.</p>{{end}}</details>{{end}}
+{{if or .Attributes .Artifacts}}<details><summary>Package metadata</summary>
+{{if .Attributes}}<h4>Attributes</h4><div class="table-scroll"><table><thead><tr><th scope="col">Record</th><th scope="col">Key</th><th scope="col">Value</th></tr></thead><tbody>
+{{range .Attributes}}<tr><td>{{.Sequence}}{{if .Line}} (line {{.Line}}){{end}}</td><td><code>{{.Key}}</code></td><td>{{.Value}}</td></tr>{{end}}
+</tbody></table></div>{{end}}
+{{if .Artifacts}}<h4>Artifact paths</h4><div class="table-scroll"><table><thead><tr><th scope="col">Record</th><th scope="col">Path (informational only)</th></tr></thead><tbody>
+{{range .Artifacts}}<tr><td>{{.Sequence}}{{if .Line}} (line {{.Line}}){{end}}</td><td><code>{{.Path}}</code></td></tr>{{end}}
+</tbody></table></div>{{end}}
+</details>{{end}}
+{{if not .Tests}}<p class="empty">No named test occurrences.</p>{{end}}
+</div>
+{{if .Tests}}<div class="test-list">
+{{range .Tests}}
+<article class="test-row filterable" data-status="{{.StatusClass}}" data-search="{{.Package}} {{.Label}} {{.Status}}">
+<div class="heading">
+<div><h4>{{.Label}}</h4><p class="meta">occurrence {{.Ordinal}}{{if .Kind}} · {{.Kind}}{{end}}{{if .DurationKnown}} · {{.Duration}}{{if .DurationSource}} ({{.DurationSource}}){{end}}{{else}} · duration unavailable{{if .DurationSource}} ({{.DurationSource}}){{end}}{{end}}{{if .IncompleteReason}} · {{.IncompleteReason}}{{end}}</p></div>
+<strong class="status-pill {{.StatusClass}}">{{.Status}}</strong>
+</div>
+{{if .Output}}<details{{if or (eq .StatusClass "failed") (eq .StatusClass "incomplete")}} open{{end}}><summary>Test output</summary><pre>{{.Output}}</pre></details>{{end}}
+{{if .OutputTruncated}}<p class="notice">Output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes. Inspect test_output.jsonl for complete evidence.</p>{{end}}
+{{if or .Attributes .Artifacts}}<details><summary>Occurrence metadata</summary>
+{{if .Attributes}}<h5>Attributes</h5><div class="table-scroll"><table><thead><tr><th scope="col">Record</th><th scope="col">Key</th><th scope="col">Value</th></tr></thead><tbody>
+{{range .Attributes}}<tr><td>{{.Sequence}}{{if .Line}} (line {{.Line}}){{end}}</td><td><code>{{.Key}}</code></td><td>{{.Value}}</td></tr>{{end}}
+</tbody></table></div>{{end}}
+{{if .Artifacts}}<h5>Artifact paths</h5><div class="table-scroll"><table><thead><tr><th scope="col">Record</th><th scope="col">Path (informational only)</th></tr></thead><tbody>
+{{range .Artifacts}}<tr><td>{{.Sequence}}{{if .Line}} (line {{.Line}}){{end}}</td><td><code>{{.Path}}</code></td></tr>{{end}}
+</tbody></table></div>{{end}}
+</details>{{end}}
+</article>
+{{end}}
+</div>{{end}}
+</article>
+{{end}}
+{{else}}<div class="section-card"><div class="section-body"><p class="empty">No package events were decoded.</p></div></div>{{end}}
+</section>
+
+{{if .Builds}}
+<section class="report-section" aria-labelledby="builds-heading">
+<div class="section-title"><h2 id="builds-heading">Build events</h2><p>Package compilation evidence emitted by the Go toolchain.</p></div>
+{{range .Builds}}
+<article class="build-card filterable" data-status="{{.StatusClass}}" data-search="{{.ImportPath}} {{.Status}}">
+<header class="build-header"><div class="heading"><h3>{{.ImportPath}}</h3><strong class="status-pill {{.StatusClass}}">{{.Status}}</strong></div></header>
+<div class="build-body">{{if .Output}}<pre>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Build output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes.</p>{{end}}</div>
+</article>
+{{end}}</section>
+{{end}}
+
+{{with .UnattributedOutput}}
+<section class="section-card filterable" data-status="unknown" aria-labelledby="unattributed-heading">
+<header class="section-header"><h2 id="unattributed-heading">Unattributed test output</h2><p>Output that could not be assigned to a package or occurrence.</p></header>
+<div class="section-body">
+{{if .Output}}<pre>{{.Output}}</pre>{{else}}<p class="empty">No output bytes were retained in this projection.</p>{{end}}
+<p class="meta">Retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes.</p>
+{{if .OutputTruncated}}<p class="notice">Unattributed output truncated. Inspect test_output.jsonl for complete evidence.</p>{{end}}
+</div>
+</section>
+{{end}}
+
+{{if or .Diagnostics .DiagnosticCount .DiagnosticsTruncated}}
+<section class="report-section" aria-labelledby="diagnostics-heading">
+<div class="section-title"><h2 id="diagnostics-heading">Integrity diagnostics</h2><p>Retained {{.DiagnosticsRetained}} of {{.DiagnosticCount}} diagnostics{{if .DiagnosticsTruncated}}; the diagnostic list is truncated{{end}}.</p></div>
+{{range .Diagnostics}}
+<article class="build-card filterable" data-status="incomplete" data-search="{{.Kind}} {{.Message}}">
+<header class="build-header"><div class="heading"><h3>{{.Kind}} at record {{.Sequence}}</h3><strong class="status-pill incomplete">incomplete</strong></div></header>
+<div class="build-body"><p>{{.Message}}</p>{{if .Preview}}<pre>{{.Preview}}</pre>{{end}}<p class="meta">line {{.Line}} · {{.Bytes}} bytes{{if .Truncated}} · preview truncated{{end}}</p></div>
+</article>
+{{else}}<div class="section-card"><div class="section-body"><p class="empty">No diagnostic details were retained.</p></div></div>{{end}}
+</section>
+{{end}}
+
+{{with .Coverage}}
+<section class="section-card" aria-labelledby="coverage-heading">
+<header class="section-header"><h2 id="coverage-heading">Weighted coverage by file</h2><p>{{.Covered}} of {{.Statements}} weighted statements covered · {{.Percentage}} · mode {{.Mode}}.</p></header>
+<div class="table-scroll">{{if .Files}}<table><thead><tr><th scope="col">File</th><th scope="col">Covered statements</th><th scope="col">Total statements</th><th scope="col">Coverage</th></tr></thead><tbody>
+{{range .Files}}<tr><td class="mono">{{.Name}}</td><td class="tabular">{{.Covered}}</td><td class="tabular">{{.Statements}}</td><td class="tabular">{{.Percentage}}</td></tr>{{end}}
+</tbody></table>{{else}}<div class="section-body"><p class="empty">The profile contains no source blocks.</p></div>{{end}}</div>
+</section>
+{{end}}
+
+{{if .Slowest}}
+<section class="section-card" aria-labelledby="slowest-heading">
+<header class="section-header"><h2 id="slowest-heading">Slowest occurrences</h2><p>Longest measured or estimated test durations retained in this report.</p></header>
+<div class="table-scroll"><table><thead><tr><th scope="col">Package</th><th scope="col">Occurrence</th><th scope="col">Duration</th><th scope="col">Source</th><th scope="col">Status</th></tr></thead><tbody>
+{{range .Slowest}}<tr><td class="mono">{{.Package}}</td><td class="mono">{{.Label}}</td><td class="tabular">{{.Duration}}</td><td>{{.DurationSource}}</td><td><span class="status-pill {{.StatusClass}}">{{.Status}}</span></td></tr>{{end}}
+</tbody></table></div></section>
+{{end}}
+</main>
+</div>
+<script>
+{{template "test_output.js"}}
+</script>
+</body>
+</html>

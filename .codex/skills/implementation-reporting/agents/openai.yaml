@@ -1,0 +1,4 @@
+interface:
+  display_name: "Report Generation"
+  short_description: "Implement terminal and artifact reporting"
+  default_prompt: "Use $implementation-reporting to change tested console, HTML, JSON, XML, or manifest reports."
