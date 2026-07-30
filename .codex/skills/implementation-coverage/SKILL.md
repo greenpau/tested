@@ -133,23 +133,53 @@ Do not substitute a custom coverage renderer. Stream the Go-authored document
 through the fixed `pkg/report` presentation decorator into a second
 destination-filesystem temporary file. Bound the search for the unique closing
 `head`, reject a pre-existing tested theme marker within that head or multiple
-closing heads, and inject only the fixed viewport declaration,
-content-security policy, and self-contained theme CSS. Do not parse, redact,
-reorder, or regenerate the source, coverage spans, file selector, or script;
-the annotated source body may itself contain the marker text. Revalidate both
-temporary files against replacement before publishing the decorated file
-atomically with mode `0600`.
+closing heads, and inject only the tested-owned viewport declaration,
+content-security policy, embedded theme CSS, progressive explorer JavaScript,
+and optional safely encoded bounded comparison model. Do not parse, redact,
+reorder, or regenerate the source, coverage spans, file selector, or
+Go-authored script; the annotated source body may itself contain the marker
+text. Revalidate both temporary files against replacement before publishing
+the decorated file atomically with mode `0600`.
 
 The supported Go templates use the case-sensitive `</head>` byte anchor. Limit
 the buffered prefix through that anchor to 1 MiB, then stream the remaining
 body with only bounded overlap needed to reject a second closing head.
 
-The decorator must contain no external resource reference and no untrusted
-input. Removing its exact fixed injection from a completed artifact must
-restore the selected Go toolchain's bytes exactly.
-Source the decorator's HTML fragment and shared CSS from the report package's
-`embed.FS`; renderer construction must return an asset-loading error rather
-than reading runtime files or panicking.
+The fixed assets must contain no external resource reference. Treat an optional
+comparison payload as untrusted data, encode it contextually, and never admit
+it through a trusted-content cast. Removing the exact rendered injection from
+a completed artifact must restore the selected Go toolchain's bytes exactly.
+Source the decorator's HTML fragment, shared CSS, and explorer JavaScript from
+the report package's `embed.FS`; renderer construction must return an
+asset-loading error rather than reading runtime files or panicking.
+
+## Compare source only from an explicit baseline
+
+Enable source changes only with `--coverage-diff-base REV`. Validate the
+revision as one bounded argument, resolve it once to a full immutable commit
+object with local Git, and use that object identifier for every comparison.
+Do not infer `HEAD`, a default branch, a GitHub event, or a merge base. Do not
+fetch, contact a remote, run a shell, enable external diff drivers, or apply
+text-conversion filters. Make Git a dependency only for the explicit option.
+
+Resolve each profile source to a repository file unambiguously using the
+selected project working directory and Go package identity. Never attach a
+suffix-guessed baseline to an ambiguous profile name. Compare only files in
+the current coverage profile: support modified, added, renamed, and untracked
+current files, and omit deleted-only files because no current coverage panel
+exists. Record old and new repository paths and a deterministic structured
+zero-context edit script. Preserve deleted line text for offline rendering;
+unchanged gaps may be reconstructed only when line mappings and current source
+validation agree.
+
+Bound revision text, command output and diagnostics, files, per-file and
+aggregate source/diff bytes, hunks, lines, and line length. Propagate
+cancellation through every owned Git process and reject missing commits,
+shallow-clone omissions, ambiguous mappings, malformed Git output, source
+mutation, and exceeded bounds without publishing a misleading comparison.
+Keep coverage reporting unchanged when no baseline is requested. Treat
+baseline source as sensitive unredacted coverage content because it can reveal
+secrets removed from current source.
 
 ## Failure and recovery
 
@@ -187,6 +217,12 @@ than reading runtime files or panicking.
 - The fixed decorator is byte-deterministic across chunk boundaries, accepts
   the selected Go toolchain's document, rejects malformed or already-decorated
   heads, contains no external resources, and is exactly reversible by removing
-  its fixed injection.
+  its exact rendered injection.
 - A real selected-toolchain integration retains the `#files` selector,
   `pre.file` source panels, coverage spans, and change script after decoration.
+- An explicit baseline resolves to one commit, includes only unambiguously
+  matched current-profile files, renders deterministic added/modified/renamed
+  edit scripts, and fails clearly for missing Git objects, malformed output,
+  ambiguity, cancellation, and every configured bound.
+- Without `--coverage-diff-base`, Git is never invoked and the report exposes
+  coverage focus without fabricating source changes or a split comparison.

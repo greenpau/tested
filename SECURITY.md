@@ -28,7 +28,9 @@ reviewed.
 - test standard output and standard error;
 - compiler, vet, panic, race, and timeout diagnostics;
 - file and module paths;
-- coverage profiles and complete covered source files.
+- coverage profiles and complete covered source files;
+- optional baseline source read from a caller-selected local Git commit,
+  including line content deleted from the working tree.
 
 That content is untrusted. Generated HTML uses contextual escaping and does not
 load network assets. Report targets and the artifact root may not be symbolic
@@ -67,8 +69,10 @@ and `coverage.html` can contain credentials, tokens, cookies, command
 arguments, private paths, customer data, or proprietary source. `--redact`
 affects plain/Markdown/JSON console output, `test_output.html`, `summary.json`,
 `junit.xml`, and `index.html`. It does not silently modify live-captured or
-imported event/stderr/profile bytes, annotated coverage source, `run.json`, or
-manifest-integrity fields.
+imported event/stderr/profile bytes, current or baseline coverage-page source,
+`run.json`, or manifest-integrity fields. `--coverage-diff-base` never
+fetches or infers a revision, but its self-contained HTML projection can embed
+source that is absent from the current checkout.
 
 Before sharing `.coverage`:
 

@@ -395,6 +395,13 @@ func executeReport(
 		options.CoverageProfileFile == "" {
 		useCoverage = false
 	}
+	if options.CoverageDiffBase != "" && !useCoverage {
+		outcome.errors.add(errors.New(
+			"coverage source comparison requested, but coverage evidence is unavailable",
+		))
+		outcome.state.ReportErr = true
+		manifestEligible = false
+	}
 	if useCoverage {
 		profile, coverageSnapshotPath, err = parseCoverageSnapshot(
 			layout,
@@ -445,6 +452,8 @@ func executeReport(
 			layout,
 			renderer,
 			coverageSnapshotPath,
+			profile,
+			options.CoverageDiffBase,
 		); coverageReportErr != nil {
 			outcome.errors.add(coverageReportErr)
 			outcome.state.ReportErr = true
@@ -654,6 +663,8 @@ func publishCoverageReport(
 	layout *artifact.Layout,
 	renderer *report.Renderer,
 	profilePath string,
+	profile *coverage.Profile,
+	coverageDiffBase string,
 ) error {
 	if renderer == nil {
 		return errors.New("publish coverage report: renderer is nil")
@@ -661,12 +672,48 @@ func publishCoverageReport(
 	if profilePath == "" {
 		profilePath = layout.CoverageProfile
 	}
+	decorate := renderer.DecorateCoverageHTML
+	if coverageDiffBase != "" {
+		if profile == nil {
+			return errors.New(
+				"publish coverage report: coverage profile is nil",
+			)
+		}
+		profileFiles := make([]string, 0, len(profile.Files))
+		for _, file := range profile.Files {
+			profileFiles = append(profileFiles, file.Name)
+		}
+		decorate = func(
+			ctx context.Context,
+			source io.Reader,
+			destination io.Writer,
+		) error {
+			diff, err := coverage.BuildDiff(ctx, coverage.DiffOptions{
+				ProjectDir:   layout.WorkDir,
+				GoCommand:    goCommand,
+				BaseRevision: coverageDiffBase,
+				ProfileFiles: profileFiles,
+			})
+			if err != nil {
+				return fmt.Errorf(
+					"build source comparison: %w",
+					err,
+				)
+			}
+			return renderer.DecorateCoverageHTMLWithDiff(
+				ctx,
+				source,
+				destination,
+				diff,
+			)
+		}
+	}
 	return coverage.GenerateHTML(ctx, coverage.HTMLOptions{
 		GoCommand:   goCommand,
 		ProjectDir:  layout.WorkDir,
 		ProfilePath: profilePath,
 		OutputPath:  layout.CoverageHTML,
-		Decorate:    renderer.DecorateCoverageHTML,
+		Decorate:    decorate,
 	})
 }
 

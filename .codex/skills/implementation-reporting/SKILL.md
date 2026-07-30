@@ -104,14 +104,44 @@ translucent white borders.
 
 Own the shared tokens and page-specific styles in `pkg/report`. For
 `coverage.html`, preserve the selected Go toolchain's source, annotation spans,
-file selector, and script byte-for-byte. Apply only a fixed,
-untrusted-input-free head injection containing viewport metadata,
-content-security policy, and theme CSS. Bound and validate the closing-head
-anchor, reject duplicate decoration in the head without interpreting matching
-text in annotated source, stream into a separate secure temporary file, and
-require removal of the exact injection to restore the Go-authored bytes.
-The selected Go template contract uses the case-sensitive `</head>` anchor and
-a 1 MiB maximum head; changing either requires compatibility evidence.
+file selector, and script byte-for-byte. Apply one deterministic, exactly
+removable head injection containing viewport metadata, content-security policy,
+embedded theme CSS and progressive interaction JavaScript. Permit a safely
+encoded dynamic payload only for a bounded source comparison explicitly
+selected by `--coverage-diff-base`; treat all payload strings as untrusted and
+never cast them to trusted HTML or JavaScript. Bound and validate the
+closing-head anchor, reject duplicate decoration in the head without
+interpreting matching text in annotated source, stream into a separate secure
+temporary file, and require removal of the exact rendered injection to restore
+the Go-authored bytes. The selected Go template contract uses the
+case-sensitive `</head>` anchor and a 1 MiB maximum head; changing either
+requires compatibility evidence.
+
+Keep the canonical Go selector and source panels as the no-JavaScript and
+unsupported-template fallback. Initialize the explorer after DOM readiness,
+validate the complete expected selector-to-panel mapping before mutation, and
+drive file changes through the retained selector. Build selected-file views
+lazily with explicit source-size, line, and annotation-run bounds. Split
+multiline coverage spans without losing text or coverage classes. Derive
+packages lexically from exact profile source identities; do not normalize or
+merge untrusted names.
+
+Separate coverage focus from source changes. Let coverage mode show all source
+or uncovered regions with three lines of context and accessible expandable
+gaps. Expose Changes, changes-only scope, unified layout, and split layout only
+when a real baseline payload exists. Render old/deleted lines without coverage
+claims and retain current coverage annotations only on current/right lines.
+With that baseline, expose a changed-files switch that narrows both package and
+file selectors to modified, added, renamed, and untracked current-profile
+files. Exclude unchanged, unavailable, and unmapped files; count a pure rename
+as changed even without changed lines. Hide the switch without a baseline,
+disable it when no covered file changed, preserve eligible selections, and let
+an explicit file hash reveal its target by clearing incompatible filters.
+Use real labels, selects, tabs or radio controls, buttons, table headers, a
+polite status region, non-color add/delete cues, contained horizontal
+overflow, and print behavior that reveals selected content. Build untrusted
+text with DOM text nodes and fixed attributes only; forbid HTML string sinks,
+dynamic code, network access, storage, and source-path URLs.
 
 Keep every report-owned `.html`, `.css`, and `.js` source in
 `pkg/report/assets/` and include the inventory through one unexported
@@ -119,8 +149,10 @@ Keep every report-owned `.html`, `.css`, and `.js` source in
 JavaScript as named static subtemplates rather than trusted-content casts.
 Load and validate the immutable asset bundle during renderer construction and
 return errors for missing, malformed, unresolved, or structurally invalid
-assets instead of panicking. The JavaScript authored by `go tool cover` is
-preserved toolchain output, not a tested-owned source asset.
+assets instead of panicking. Validate the coverage script against closing
+script syntax, external references, unresolved template actions, and duplicate
+markers. The JavaScript authored by `go tool cover` remains preserved toolchain
+output separate from tested's embedded progressive enhancer.
 
 ## Render live output
 
@@ -287,8 +319,17 @@ On a report failure:
 - A failure during one derivative leaves raw evidence intact and no manifest
   claiming the failed file.
 - Real selected-toolchain coverage HTML retains `#files`, `pre.file`, coverage
-  spans, and its change script after decoration; removing the exact fixed head
-  injection restores the original bytes.
+  spans, and its change script after decoration; removing the exact rendered
+  head injection restores the original bytes.
+- Coverage mode filters packages, finds uncovered multiline spans, expands
+  hidden context without duplicating text, and safely falls back on malformed
+  or oversized canonical DOM.
+- A report with an explicit real baseline renders additions, deletions,
+  renames, no-change files, unified and split layouts, and expandable
+  unchanged gaps. Its changed-files switch filters both selectors, retains
+  rename-only files, excludes indeterminate mappings, and yields to explicit
+  hash navigation; a report without a baseline exposes neither that switch nor
+  source changes.
 - Headless browser inspection at 1440×1000 and 390×844 shows no toolbar/source
   overlap, unintended page-width overflow, clipped controls, or unreadable
   metric and artifact layouts in light mode. CSS and renderer tests cover the

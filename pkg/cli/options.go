@@ -104,6 +104,7 @@ type Options struct {
 	MaximumNormalizedBytes  int64
 	RedactPatterns          []string
 	MinimumCoverage         string
+	CoverageDiffBase        string
 	GoTestArgs              []string
 	EventsFile              string
 	CoverageProfileFile     string
@@ -263,6 +264,7 @@ func registerCommonFlags(
 	flags.StringVar(&options.OutputDir, "o", DefaultOutputDir, "")
 	flags.StringVar(&options.GoBinary, "go", "go", "")
 	flags.StringVar(&options.Title, "title", "", "")
+	flags.StringVar(&options.CoverageDiffBase, "coverage-diff-base", "", "")
 	flags.Var(redactions, "redact", "")
 	flags.Var((*colorValue)(&options.Color), "color", "")
 	flags.Var((*formatValue)(&options.Format), "format", "")
@@ -344,8 +346,18 @@ func (options Options) validate() error {
 			return usageErrorf("--minimum-coverage: %v", err)
 		}
 	}
+	if options.CoverageDiffBase != "" {
+		if err := coverage.ValidateDiffBaseRevision(
+			options.CoverageDiffBase,
+		); err != nil {
+			return usageErrorf("--coverage-diff-base: %v", err)
+		}
+	}
 	if options.NoCoverage && options.MinimumCoverage != "" {
 		return usageErrorf("--minimum-coverage cannot be combined with --no-coverage")
+	}
+	if options.NoCoverage && options.CoverageDiffBase != "" {
+		return usageErrorf("--coverage-diff-base cannot be combined with --no-coverage")
 	}
 	if options.Command == CommandReport && options.NoCoverage &&
 		options.CoverageProfileFile != "" {
@@ -515,6 +527,10 @@ Run options:
       --title TEXT            report title (default: project directory)
       --no-coverage           run tests without a coverage profile
       --minimum-coverage PCT  fail when weighted statement coverage is below PCT
+      --coverage-diff-base REV
+                              compare source with exactly one local Git commit;
+                              no revision inference or fetch is performed;
+                              embedded baseline/deleted source may be sensitive
       --format FORMAT         plain, markdown, or json (default "plain")
       --color MODE            auto, always, or never (default "auto")
       --quiet                 suppress live package progress
@@ -539,12 +555,13 @@ Report options:
       --run-metadata FILE     tested/run/v1 status (default: DIR/run.json)
       --allow-failures        return success after reporting failed test evidence
       --no-coverage           do not read or render a coverage profile
-  Common run options for directory, title, output, color, format, limits, and
-  redaction also apply.
+  Common run options for directory, title, output, coverage diff base, color,
+  format, limits, and redaction also apply.
 
 Examples:
   %[1]s
   %[1]s run -- -race -count=1 ./...
+  %[1]s run --coverage-diff-base HEAD -- ./...
   %[1]s run -C ../project -o .coverage -- -run TestLogin ./...
   %[1]s report -C ../project .coverage/test_output.jsonl
 

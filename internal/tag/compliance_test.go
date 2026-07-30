@@ -96,9 +96,17 @@ var complianceRegistry = []registryEntry{
 		"coverage profile merge options are runtime configuration",
 	),
 	exempt(
+		&coverage.DiffOptions{},
+		"coverage source comparison options are runtime configuration",
+	),
+	exempt(
 		&coverage.Threshold{},
 		"exact coverage threshold internals are intentionally encapsulated",
 	),
+	jsonSchema(&coverage.Diff{}),
+	jsonSchema(&coverage.DiffFile{}),
+	jsonSchema(&coverage.DiffHunk{}),
+	jsonSchema(&coverage.DiffLine{}),
 	portableSchema(&coverage.Position{}),
 	portableSchema(&coverage.Block{}),
 	portableSchema(&coverage.Totals{}),

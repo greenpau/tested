@@ -57,13 +57,21 @@ Pass exact arguments to `go test` after `--`:
 tested run -- -race -count=1 ./...
 tested run -- -run TestAuthentication ./...
 tested run -C ../my-project -- -shuffle=on ./...
+tested run --coverage-diff-base HEAD -- ./...
 ```
+
+`--coverage-diff-base REV` adds an opt-in source comparison to
+`coverage.html`. `REV` must resolve to exactly one commit already present in
+the project repository. `tested` does not infer a base or fetch missing Git
+objects. This option requires the local `git` executable; ordinary coverage
+generation does not.
 
 Regenerate derived reports without rerunning tests:
 
 ```bash
 tested report
 tested report -C ../my-project
+tested report -C ../my-project --coverage-diff-base HEAD
 tested report -C ../my-project \
   --events /archive/test_output.jsonl \
   --run-metadata /archive/run.json
@@ -106,8 +114,13 @@ focus, retain semantic status colors, and print cleanly without fetching
 remote assets. Their report-owned HTML, CSS, and JavaScript sources are
 compiled into the binary with Go's `embed` package. The coverage page keeps the
 selected Go toolchain's source annotation, coverage spans, file selector, and
-script intact; tested only inserts its fixed viewport, content-security policy,
-and embedded presentation CSS.
+script intact. An exactly removable head layer adds the viewport,
+content-security policy, embedded presentation assets, package filtering,
+uncovered-region focus, and expandable context. When
+`--coverage-diff-base` is supplied, that layer also carries a bounded,
+contextually escaped comparison model for genuine unified and split changes.
+A changed-files switch then limits both package and file choices to modified,
+added, renamed, and untracked covered sources.
 
 Live raw evidence and imported evidence copies are never silently redacted.
 Repeatable `--redact REGEXP` options apply to console output,
@@ -250,7 +263,10 @@ Test output and annotated coverage source can contain credentials, private file
 paths, request data, and implementation details. `tested` creates the artifact
 directory with mode `0700` and files with mode `0600`, rejects symlink report
 targets, and HTML-escapes all untrusted content. Review and redact reports
-before uploading them to shared CI storage.
+before uploading them to shared CI storage. With `--coverage-diff-base`, the
+report can also embed source from the selected commit, including deleted lines
+that no longer exist in the working tree; treat that baseline source as
+equally sensitive.
 
 See [USER_GUIDE.md](USER_GUIDE.md) for operating details and
 [SECURITY.md](SECURITY.md) for the report threat model.

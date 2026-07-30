@@ -101,7 +101,8 @@ self-test: build
 	@echo "$@: started"
 	@rm -rf $(COVERAGE_DIR)
 	@$(BINARY) run -C . -o $(COVERAGE_DIR) \
-		--minimum-coverage 1 -- -count=1 $(TEST_DIR)
+		--minimum-coverage 1 --coverage-diff-base HEAD \
+		-- -count=1 $(TEST_DIR)
 	@go run ./scripts/bundlecheck \
 		-dir $(COVERAGE_DIR) -coverage=true
 	@echo "$@: complete"

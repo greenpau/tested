@@ -17,10 +17,13 @@ package report
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/greenpau/tested/pkg/coverage"
 )
 
 func TestDecorateCoverageHTMLPreservesCanonicalBytes(t *testing.T) {
@@ -28,7 +31,7 @@ func TestDecorateCoverageHTMLPreservesCanonicalBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	themeBlock := renderer.assets.coverageHead
+	presentationBlock := renderer.assets.coverageHead
 	canonical := []byte(
 		"\n<!DOCTYPE html><html><head><title>coverage</title>" +
 			"<style>.cov0{color:red}</style></head><body>" +
@@ -63,10 +66,10 @@ func TestDecorateCoverageHTMLPreservesCanonicalBytes(t *testing.T) {
 			themeElement,
 		))
 	}
-	restored := bytes.Replace(first.Bytes(), themeBlock, nil, 1)
+	restored := bytes.Replace(first.Bytes(), presentationBlock, nil, 1)
 	if !bytes.Equal(restored, canonical) {
 		t.Fatalf(
-			"removing the fixed theme did not restore canonical bytes\n got: %q\nwant: %q",
+			"removing the presentation did not restore canonical bytes\n got: %q\nwant: %q",
 			restored,
 			canonical,
 		)
@@ -74,12 +77,13 @@ func TestDecorateCoverageHTMLPreservesCanonicalBytes(t *testing.T) {
 	for _, expected := range []string{
 		`name="viewport"`,
 		`content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"`,
+		coverageExplorerMarker,
 		"--background:",
 		"--primary:",
 		"@media (prefers-color-scheme: dark)",
 		"#files:focus-visible",
 		"grid-template-columns: minmax(0, 1fr) auto",
-		"scroll-margin-top: 5rem",
+		"scroll-margin-top: 9rem",
 		"@media (max-width: 40rem)",
 		"@media print",
 		"&lt;/head&gt; source stays escaped",
@@ -99,6 +103,116 @@ func TestDecorateCoverageHTMLPreservesCanonicalBytes(t *testing.T) {
 		if strings.Contains(first.String(), forbidden) {
 			t.Errorf("decorated coverage HTML contains external resource syntax %q", forbidden)
 		}
+	}
+}
+
+func TestDecorateCoverageHTMLWithDiffEncodesPayload(t *testing.T) {
+	renderer, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff := &coverage.Diff{
+		Schema:     coverage.DiffSchema,
+		BaseCommit: strings.Repeat("a", 40),
+		Files: []coverage.DiffFile{
+			{
+				ProfilePath: `example.test/pkg/</script>&` +
+					"\u2028\u2029" + `.go`,
+				OldPath:       "pkg/old.go",
+				NewPath:       "pkg/new.go",
+				CurrentSHA256: strings.Repeat("b", 64),
+				Status:        coverage.DiffStatusModified,
+				Hunks: []coverage.DiffHunk{
+					{
+						OldStart: 1,
+						OldLines: 1,
+						NewStart: 1,
+						NewLines: 1,
+						Lines: []coverage.DiffLine{
+							{
+								Kind:    coverage.DiffLineDelete,
+								OldLine: 1,
+								Text:    `const oldValue = "</script>&"`,
+							},
+							{
+								Kind:      coverage.DiffLineAdd,
+								NewLine:   1,
+								Text:      "const newValue = \"safe\"",
+								NoNewline: true,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	injection, err := renderer.renderCoverageHead(diff)
+	if err != nil {
+		t.Fatalf("renderCoverageHead() error = %v", err)
+	}
+	for _, expected := range [][]byte{
+		[]byte(coverageThemeMarker),
+		[]byte(coverageExplorerMarker),
+		[]byte(coverageDataMarker),
+		[]byte(`\u003c/script\u003e`),
+		[]byte(`\u0026`),
+		[]byte(`\u2028`),
+		[]byte(`\u2029`),
+	} {
+		if !bytes.Contains(injection, expected) {
+			t.Errorf("rendered comparison lacks %q", expected)
+		}
+	}
+	if bytes.Contains(injection, []byte(`</script>&`)) {
+		t.Fatal("rendered comparison contains an executable script boundary")
+	}
+
+	const dataOpen = `<script id="tested-coverage-data-v1" type="application/json">`
+	start := bytes.Index(injection, []byte(dataOpen))
+	if start < 0 {
+		t.Fatal("rendered comparison lacks data element")
+	}
+	start += len(dataOpen)
+	end := bytes.Index(injection[start:], []byte(`</script>`))
+	if end < 0 {
+		t.Fatal("rendered comparison data element is not closed")
+	}
+	var decoded coverage.Diff
+	if err := json.Unmarshal(injection[start:start+end], &decoded); err != nil {
+		t.Fatalf("decode rendered comparison: %v", err)
+	}
+	if decoded.Schema != diff.Schema ||
+		decoded.BaseCommit != diff.BaseCommit ||
+		len(decoded.Files) != 1 ||
+		decoded.Files[0].ProfilePath != diff.Files[0].ProfilePath ||
+		decoded.Files[0].CurrentSHA256 != diff.Files[0].CurrentSHA256 ||
+		len(decoded.Files[0].Hunks) != 1 ||
+		len(decoded.Files[0].Hunks[0].Lines) != 2 {
+		t.Fatalf("decoded comparison = %#v, want %#v", decoded, diff)
+	}
+
+	canonical := []byte(
+		"<!doctype html><html><head><title>coverage</title></head>" +
+			"<body><pre class=file id=file0>source</pre></body></html>",
+	)
+	var output bytes.Buffer
+	if err := renderer.DecorateCoverageHTMLWithDiff(
+		context.Background(),
+		bytes.NewReader(canonical),
+		&output,
+		diff,
+	); err != nil {
+		t.Fatalf("DecorateCoverageHTMLWithDiff() error = %v", err)
+	}
+	restored := bytes.Replace(output.Bytes(), injection, nil, 1)
+	if !bytes.Equal(restored, canonical) {
+		t.Fatal("removing rendered comparison did not restore canonical bytes")
+	}
+
+	invalid := *diff
+	invalid.Schema = "unexpected"
+	if _, err := renderer.renderCoverageHead(&invalid); err == nil {
+		t.Fatal("renderCoverageHead(invalid schema) error = nil")
 	}
 }
 

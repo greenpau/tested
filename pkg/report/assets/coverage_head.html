@@ -3,3 +3,9 @@
 <style id="tested-coverage-theme-v1">
 {{template "report.css"}}
 </style>
+<script id="tested-coverage-explorer-v1">
+{{template "coverage.js"}}
+</script>
+{{with .Diff}}
+<script id="tested-coverage-data-v1" type="application/json">{{.}}</script>
+{{end}}

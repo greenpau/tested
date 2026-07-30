@@ -15,6 +15,8 @@
 // Package coverage parses Go coverage profiles with bounded records, aggregate
 // bytes, unique files, and normalized blocks; performs cardinality-bounded
 // deterministic merges; evaluates exact weighted minimums; generates the
-// source-annotated HTML report produced by "go tool cover"; and stages an
-// optional presentation decorator securely before atomic publication.
+// source-annotated HTML report produced by "go tool cover"; constructs an
+// explicitly requested, bounded source comparison against one immutable local
+// Git commit; and stages an optional presentation decorator securely before
+// atomic publication.
 package coverage

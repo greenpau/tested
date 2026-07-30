@@ -32,7 +32,12 @@ var reportAssets embed.FS
 type reportAssetBundle struct {
 	testOutputTemplate *template.Template
 	indexTemplate      *template.Template
+	coverageTemplate   *template.Template
 	coverageHead       []byte
+}
+
+type coverageHeadView struct {
+	Diff any
 }
 
 var (
@@ -77,6 +82,7 @@ func loadReportAssets(source fs.FS) (*reportAssetBundle, error) {
 		source,
 		"assets/coverage_head.html",
 		"assets/report.css",
+		"assets/coverage.js",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("load report assets: parse coverage head: %w", err)
@@ -85,7 +91,7 @@ func loadReportAssets(source fs.FS) (*reportAssetBundle, error) {
 	if err := coverage.ExecuteTemplate(
 		&coverageHead,
 		"coverage_head.html",
-		nil,
+		coverageHeadView{},
 	); err != nil {
 		return nil, fmt.Errorf("load report assets: render coverage head: %w", err)
 	}
@@ -97,6 +103,22 @@ func loadReportAssets(source fs.FS) (*reportAssetBundle, error) {
 			"load report assets: coverage head must contain one theme marker",
 		)
 	}
+	if bytes.Count(
+		coverageHead.Bytes(),
+		[]byte(coverageExplorerMarker),
+	) != 1 {
+		return nil, errors.New(
+			"load report assets: coverage head must contain one explorer marker",
+		)
+	}
+	if bytes.Contains(
+		coverageHead.Bytes(),
+		[]byte(coverageDataMarker),
+	) {
+		return nil, errors.New(
+			"load report assets: coverage head without diff contains data marker",
+		)
+	}
 	if bytes.Contains(coverageHead.Bytes(), coverageHeadClose) {
 		return nil, errors.New(
 			"load report assets: coverage head must not close the document head",
@@ -106,6 +128,7 @@ func loadReportAssets(source fs.FS) (*reportAssetBundle, error) {
 	return &reportAssetBundle{
 		testOutputTemplate: testOutput,
 		indexTemplate:      index,
+		coverageTemplate:   coverage,
 		coverageHead:       append([]byte(nil), coverageHead.Bytes()...),
 	}, nil
 }
@@ -133,6 +156,17 @@ func validateStaticReportAssets(source fs.FS) error {
 				"http://",
 				"https://",
 				"</script",
+			},
+		},
+		{
+			path: "assets/coverage.js",
+			forbidden: []string{
+				"{{",
+				"http://",
+				"https://",
+				"</script",
+				"//# sourceurl",
+				"//# sourcemappingurl",
 			},
 		},
 	}

@@ -42,6 +42,7 @@ Important options:
 | `--title` | project directory | Human-readable report title |
 | `--no-coverage` | disabled | Produce test reports without a cover profile; incompatible with status that records a coverage policy |
 | `--minimum-coverage` | disabled | Exact required weighted statement percentage |
+| `--coverage-diff-base` | disabled | Compare coverage source with an explicitly selected local Git commit |
 | `--format` | `plain` | Console projection: `plain`, `markdown`, or `json` |
 | `--color` | `auto` | ANSI color policy: `auto`, `always`, or `never` |
 | `--quiet` | disabled | Suppress live package completion lines |
@@ -89,6 +90,28 @@ a terminal or report never decides the result. When the child run is otherwise
 successful and coherent, below-threshold coverage exits 3; missing, empty, or
 invalid coverage is an infrastructure/reporting failure and exits 2. A child
 failure or cancellation retains its higher-precedence status.
+
+#### Coverage source comparisons
+
+`--coverage-diff-base REV` enables the change-focused and side-by-side views
+in `coverage.html`. The revision is passed to Git as one argument and must
+resolve to exactly one commit in the repository selected by `--work-dir`.
+`tested` does not infer a default branch, contact a remote, or fetch a missing
+object. This opt-in mode requires the local `git` executable; ordinary coverage
+generation does not. Both `run` and `report` accept the option; report mode
+resolves the commit in its selected work directory when it regenerates the
+page. An empty value leaves source comparison disabled.
+
+The comparison uses source from the selected commit as its baseline and the
+source used by the current coverage report as its destination. Because the
+HTML is self-contained, it can embed baseline lines that were deleted from a
+modified or renamed current file. Baseline and current source can contain
+credentials, private paths, or implementation details; both are unredacted
+coverage evidence and must be protected accordingly.
+`--coverage-diff-base` cannot be combined with `--no-coverage`.
+If a live or offline bundle has no usable coverage profile, an explicitly
+requested comparison fails report generation instead of being silently
+ignored.
 
 ### Offline report
 
@@ -309,10 +332,15 @@ templates or assets beside the executable.
 `coverage.html` retains the document produced by the selected toolchain's
 `go tool cover`, including its source annotation, coverage spans, file
 selector, and script. Before atomic publication, tested streams that document
-through a fixed decorator which inserts only a viewport declaration, a
-restrictive content-security policy, and tested-owned presentation CSS before
-the unique closing `head`. It does not redact, parse, reorder, or independently
-render the Go-authored source report.
+through a decorator which inserts one exactly removable viewport,
+content-security-policy, embedded-style, and embedded-script layer before the
+unique closing `head`. The progressive explorer filters packages, focuses
+uncovered regions, and expands hidden context while preserving the canonical
+Go page as its fallback. An explicit `--coverage-diff-base` adds a bounded,
+contextually escaped edit model for unified and split source changes. Its
+changed-files switch limits both selectors to packages and covered files that
+are modified, added, renamed, or untracked. Tested does not redact, reorder, or
+independently replace the Go-authored source report.
 
 Coverage profile parsing has independent safety ceilings of 256 MiB of raw
 profile data, 100,000 unique source files, and 1,000,000 unique normalized
@@ -357,7 +385,7 @@ diagnostics, metadata, and retained output. They do not alter:
 - `test_output.jsonl`;
 - `stderr.log`;
 - `coverage.out`;
-- source embedded by `coverage.html`;
+- current and optional baseline source embedded by `coverage.html`;
 - `run.json`;
 - `manifest.json` names, sizes, or digests.
 

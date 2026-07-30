@@ -288,6 +288,8 @@ func executeRun(
 			layout,
 			renderer,
 			coverageSnapshotPath,
+			profile,
+			options.CoverageDiffBase,
 		); coverageReportErr != nil {
 			outcome.errors.add(coverageReportErr)
 			outcome.state.ReportErr = true

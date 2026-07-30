@@ -37,7 +37,9 @@ run identity.
 6. Parse coverage with Go profile semantics and statement weights. Run
    `go tool cover` with its working directory set to the tested module, not the
    report directory, then apply the fixed report-owned presentation decorator
-   without changing the Go-authored source, spans, selector, or script.
+   without changing the Go-authored source, spans, selector, or script. When
+   explicitly requested, resolve the configured coverage-diff revision to one
+   immutable local Git commit and add only its bounded comparison model.
 7. Render all presentations from the normalized result and coverage model.
    Escape the destination syntax, apply configured redaction to presentations,
    and label measured versus estimated durations.
@@ -59,7 +61,8 @@ run identity.
 - Let `pkg/result` own occurrence-aware semantic state. Reports must consume
   that model instead of re-parsing raw JSON.
 - Let `pkg/coverage` own profile semantics, Go cover invocation, and secure
-  staged decoration.
+  staged decoration. Let it also own explicit Git-baseline resolution and the
+  bounded structured source comparison used by the coverage explorer.
 - Let `pkg/report` own escaping, redaction, deterministic projections, live
   display, the shared fixed HTML visual system, and coverage presentation
   decorator. Keep its HTML, CSS, and JavaScript sources in a compile-time
@@ -97,9 +100,12 @@ run identity.
   Omit both coverage artifacts when coverage is disabled; otherwise never
   fabricate a profile and require a valid profile before generating coverage
   HTML. Preserve the Go-authored coverage source, annotation spans, selector,
-  and script byte-for-byte while permitting only tested's fixed deterministic
-  viewport, content-security-policy, and theme injection. Additional outputs
-  are derivatives, not substitutions.
+  and script byte-for-byte while permitting only tested's deterministic,
+  exactly removable viewport, content-security-policy, embedded theme and
+  interaction assets, plus an optional safely encoded bounded diff model.
+  Resolve `--coverage-diff-base` to an immutable commit only when explicitly
+  supplied; never infer a branch, contact a remote, or fetch an object.
+  Additional outputs are derivatives, not substitutions.
 - `ARCH-010` — Managed directories use mode `0700` and managed regular files
   use mode `0600`. Paths cannot escape the managed output root through
   traversal or symlinks.

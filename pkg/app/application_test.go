@@ -51,7 +51,8 @@ func TestExecuteHelpVersionAndUsage(t *testing.T) {
 			t.Fatalf("Execute(help) code = %d, stderr = %q", code, stderr.String())
 		}
 		if !strings.Contains(stdout.String(), "tested report") ||
-			!strings.Contains(stdout.String(), "--minimum-coverage") {
+			!strings.Contains(stdout.String(), "--minimum-coverage") ||
+			!strings.Contains(stdout.String(), "--coverage-diff-base") {
 			t.Fatalf("Execute(help) output is incomplete:\n%s", stdout.String())
 		}
 	})
@@ -88,6 +89,39 @@ func TestExecuteHelpVersionAndUsage(t *testing.T) {
 		}
 		if stdout.Len() != 0 || !strings.Contains(stderr.String(), "plain decimal percentage") {
 			t.Fatalf("stdout = %q, stderr = %q", stdout.String(), stderr.String())
+		}
+	})
+
+	t.Run("coverage diff requires coverage", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		code := Execute(
+			context.Background(),
+			[]string{
+				"report",
+				"--no-coverage",
+				"--coverage-diff-base", "HEAD",
+			},
+			&stdout,
+			&stderr,
+			BuildInfo{},
+		)
+		if code != ExitInfrastructure {
+			t.Fatalf(
+				"Execute(invalid coverage diff) code = %d, want %d",
+				code,
+				ExitInfrastructure,
+			)
+		}
+		if stdout.Len() != 0 ||
+			!strings.Contains(
+				stderr.String(),
+				"--coverage-diff-base cannot be combined with --no-coverage",
+			) {
+			t.Fatalf(
+				"stdout = %q, stderr = %q",
+				stdout.String(),
+				stderr.String(),
+			)
 		}
 	})
 }
@@ -688,6 +722,47 @@ func TestExecuteOfflineStatusBindingAndCustomImports(t *testing.T) {
 			!bytes.Equal(secondManifest, firstManifest) {
 			t.Fatal("repeated no-coverage projection is not deterministic")
 		}
+
+		stdout.Reset()
+		stderr.Reset()
+		code = Execute(
+			context.Background(),
+			[]string{
+				"report",
+				"-C", workDir,
+				"--coverage-diff-base", "HEAD",
+				"--quiet",
+			},
+			&stdout,
+			&stderr,
+			BuildInfo{},
+		)
+		if code != ExitInfrastructure {
+			t.Fatalf(
+				"Execute(comparison without coverage) code = %d, want %d; stderr=%q",
+				code,
+				ExitInfrastructure,
+				stderr.String(),
+			)
+		}
+		if !strings.Contains(
+			stderr.String(),
+			"coverage source comparison requested, but coverage evidence is unavailable",
+		) {
+			t.Fatalf(
+				"comparison without coverage diagnostic = %q",
+				stderr.String(),
+			)
+		}
+		if _, err := os.Lstat(manifestPath); !errors.Is(
+			err,
+			os.ErrNotExist,
+		) {
+			t.Fatalf(
+				"comparison without coverage retained manifest: %v",
+				err,
+			)
+		}
 	})
 
 	t.Run("hard-linked external events are copied without changing aliases", func(t *testing.T) {
@@ -1115,6 +1190,11 @@ func TestCovered(t *testing.T) {
 			}
 			if name == "coverage.html" {
 				for _, expected := range [][]byte{
+					[]byte(`id="tested-coverage-explorer-v1"`),
+					[]byte(`"tested-coverage-package"`),
+					[]byte(`"tested-coverage-tab-changes"`),
+					[]byte(`"tested-coverage-layout-split"`),
+					[]byte(`"Uncovered regions"`),
 					[]byte(`<select id="files">`),
 					[]byte(`<pre class="file"`),
 					[]byte(`class="cov`),
@@ -1126,6 +1206,14 @@ func TestCovered(t *testing.T) {
 							expected,
 						)
 					}
+				}
+				if bytes.Contains(
+					htmlData,
+					[]byte(`id="tested-coverage-data-v1"`),
+				) {
+					t.Error(
+						"coverage.html embedded comparison data without a baseline",
+					)
 				}
 			}
 		}

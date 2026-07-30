@@ -20,11 +20,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/greenpau/tested/pkg/coverage"
 )
 
 const (
-	coverageHTMLHeadLimit = 1 << 20
-	coverageThemeMarker   = `id="tested-coverage-theme-v1"`
+	coverageHTMLHeadLimit      = 1 << 20
+	coverageHTMLInjectionLimit = 129 << 20
+	coverageThemeMarker        = `id="tested-coverage-theme-v1"`
+	coverageExplorerMarker     = `id="tested-coverage-explorer-v1"`
+	coverageDataMarker         = `id="tested-coverage-data-v1"`
 )
 
 var coverageHeadClose = []byte("</head>")
@@ -35,6 +40,28 @@ func (r *Renderer) DecorateCoverageHTML(
 	ctx context.Context,
 	source io.Reader,
 	destination io.Writer,
+) error {
+	return r.decorateCoverageHTML(ctx, source, destination, nil)
+}
+
+// DecorateCoverageHTMLWithDiff copies Go-authored coverage HTML while adding
+// tested's presentation layer and a safely encoded source comparison model.
+// The Go-authored document remains unchanged outside the exact removable head
+// injection.
+func (r *Renderer) DecorateCoverageHTMLWithDiff(
+	ctx context.Context,
+	source io.Reader,
+	destination io.Writer,
+	diff *coverage.Diff,
+) error {
+	return r.decorateCoverageHTML(ctx, source, destination, diff)
+}
+
+func (r *Renderer) decorateCoverageHTML(
+	ctx context.Context,
+	source io.Reader,
+	destination io.Writer,
+	diff *coverage.Diff,
 ) error {
 	if r == nil {
 		return errors.New("decorate coverage HTML: renderer is nil")
@@ -48,13 +75,18 @@ func (r *Renderer) DecorateCoverageHTML(
 	if destination == nil {
 		return errors.New("decorate coverage HTML: destination is nil")
 	}
-	if r.assets == nil || len(r.assets.coverageHead) == 0 {
+	if r.assets == nil || r.assets.coverageTemplate == nil ||
+		len(r.assets.coverageHead) == 0 {
 		return errors.New(
 			"decorate coverage HTML: embedded assets are unavailable",
 		)
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("decorate coverage HTML: %w", context.Cause(ctx))
+	}
+	injection, err := r.renderCoverageHead(diff)
+	if err != nil {
+		return err
 	}
 
 	head := make([]byte, 0, 32<<10)
@@ -94,9 +126,12 @@ func (r *Renderer) DecorateCoverageHTML(
 				}
 				if err := writeAll(
 					destination,
-					r.assets.coverageHead,
+					injection,
 				); err != nil {
-					return fmt.Errorf("decorate coverage HTML: write theme: %w", err)
+					return fmt.Errorf(
+						"decorate coverage HTML: write presentation: %w",
+						err,
+					)
 				}
 				if err := writeAll(destination, head[index:]); err != nil {
 					return fmt.Errorf("decorate coverage HTML: write head suffix: %w", err)
@@ -138,6 +173,48 @@ func (r *Renderer) DecorateCoverageHTML(
 			return fmt.Errorf("decorate coverage HTML: %w", context.Cause(ctx))
 		}
 	}
+}
+
+func (r *Renderer) renderCoverageHead(diff *coverage.Diff) ([]byte, error) {
+	if diff == nil {
+		return append([]byte(nil), r.assets.coverageHead...), nil
+	}
+	if diff.Schema != coverage.DiffSchema {
+		return nil, errors.New(
+			"decorate coverage HTML: source comparison schema is invalid",
+		)
+	}
+	var output bytes.Buffer
+	if err := r.assets.coverageTemplate.ExecuteTemplate(
+		&output,
+		"coverage_head.html",
+		coverageHeadView{Diff: diff},
+	); err != nil {
+		return nil, fmt.Errorf(
+			"decorate coverage HTML: render presentation: %w",
+			err,
+		)
+	}
+	data := output.Bytes()
+	if len(data) > coverageHTMLInjectionLimit {
+		return nil, fmt.Errorf(
+			"decorate coverage HTML: rendered presentation exceeds %d bytes",
+			coverageHTMLInjectionLimit,
+		)
+	}
+	if bytes.Count(data, []byte(coverageThemeMarker)) != 1 ||
+		bytes.Count(data, []byte(coverageExplorerMarker)) != 1 ||
+		bytes.Count(data, []byte(coverageDataMarker)) != 1 {
+		return nil, errors.New(
+			"decorate coverage HTML: rendered presentation markers are invalid",
+		)
+	}
+	if bytes.Contains(data, coverageHeadClose) {
+		return nil, errors.New(
+			"decorate coverage HTML: rendered presentation closes the document head",
+		)
+	}
+	return append([]byte(nil), data...), nil
 }
 
 func copyCoverageHTMLBody(

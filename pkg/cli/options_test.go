@@ -58,6 +58,7 @@ func TestParseRun(t *testing.T) {
 				"--max-result-entries", "1234",
 				"--max-normalized-bytes", "32768",
 				"--minimum-coverage", "82.5",
+				"--coverage-diff-base", "origin/main",
 				"--redact", `secret=\S+`, "--redact", `token=\S+`,
 				"--", "-race", "-count=1", "./...",
 			},
@@ -76,6 +77,7 @@ func TestParseRun(t *testing.T) {
 				MaximumResultEntries:    1234,
 				MaximumNormalizedBytes:  32768,
 				MinimumCoverage:         "82.5",
+				CoverageDiffBase:        "origin/main",
 				RedactPatterns:          []string{`secret=\S+`, `token=\S+`},
 				GoTestArgs:              []string{"-race", "-count=1", "./..."},
 				EventsFile:              "",
@@ -144,6 +146,30 @@ func TestParseRun(t *testing.T) {
 			name:    "coverage threshold with no coverage",
 			args:    []string{"run", "--no-coverage", "--minimum-coverage", "80"},
 			wantErr: "cannot be combined",
+		},
+		{
+			name:    "coverage diff with no coverage",
+			args:    []string{"run", "--no-coverage", "--coverage-diff-base", "HEAD"},
+			wantErr: "cannot be combined",
+		},
+		{
+			name:    "coverage diff option shaped revision",
+			args:    []string{"run", "--coverage-diff-base=-HEAD"},
+			wantErr: "cannot begin with '-'",
+		},
+		{
+			name:    "coverage diff control character",
+			args:    []string{"run", "--coverage-diff-base", "main\nHEAD"},
+			wantErr: "control character",
+		},
+		{
+			name: "coverage diff revision limit",
+			args: []string{
+				"run",
+				"--coverage-diff-base",
+				strings.Repeat("a", 1025),
+			},
+			wantErr: "exceeds 1024 bytes",
 		},
 		{
 			name:    "non-finite coverage threshold",
@@ -267,6 +293,7 @@ func TestParseReport(t *testing.T) {
 		"report", "-C", "/project", "-o", "reports",
 		"--coverprofile", "profile.out", "--stderr", "stderr.txt",
 		"--run-metadata", "run.json",
+		"--coverage-diff-base", "release-1",
 		"--allow-failures", "events.jsonl",
 	})
 	if err != nil {
@@ -277,6 +304,7 @@ func TestParseReport(t *testing.T) {
 		got.CoverageProfileFile != "profile.out" ||
 		got.StderrFile != "stderr.txt" ||
 		got.RunMetadataFile != "run.json" ||
+		got.CoverageDiffBase != "release-1" ||
 		!got.AllowFailures {
 		t.Fatalf("Parse() = %#v", got)
 	}
@@ -291,6 +319,23 @@ func TestParseReport(t *testing.T) {
 	})
 	if err == nil || !IsUsageError(err) {
 		t.Fatalf("Parse(contradictory coverage flags) error = %v, want usage error", err)
+	}
+
+	_, err = Parse([]string{
+		"report", "--no-coverage", "--coverage-diff-base", "HEAD",
+	})
+	if err == nil || !IsUsageError(err) {
+		t.Fatalf("Parse(coverage diff without coverage) error = %v, want usage error", err)
+	}
+
+	got, err = Parse([]string{
+		"run", "--no-coverage", "--coverage-diff-base", "",
+	})
+	if err != nil {
+		t.Fatalf("Parse(empty coverage diff base) error = %v", err)
+	}
+	if got.CoverageDiffBase != "" || !got.NoCoverage {
+		t.Fatalf("Parse(empty coverage diff base) = %#v", got)
 	}
 
 	got, err = Parse([]string{
@@ -335,6 +380,9 @@ func TestUsage(t *testing.T) {
 		"custom-tested runs Go tests",
 		"test_output.jsonl",
 		"--minimum-coverage",
+		"--coverage-diff-base",
+		"no revision inference or fetch",
+		"baseline/deleted source may be sensitive",
 		"--max-normalized-bytes",
 		"--stderr",
 		"must consume text",

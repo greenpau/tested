@@ -29,6 +29,7 @@ run even when framing, aggregation, coverage, or report generation fails.
   pass-through, such as `tested ./... -run TestLogin`. Keep `-C`/`--work-dir`,
   `-o`/`--output-dir`, `--go`, `--title`, `--no-coverage`,
   `--minimum-coverage`, `--format plain|markdown|json`,
+  `--coverage-diff-base`,
   `--color auto|always|never`, `--quiet`, `--slowest`,
   `--max-event-bytes`, `--max-test-output-bytes`,
   `--max-total-output-bytes`, `--max-result-entries`,
@@ -58,7 +59,12 @@ run even when framing, aggregation, coverage, or report generation fails.
 - Keep `index.html`, `test_output.html`, and `coverage.html` within one compact,
   responsive, keyboard-accessible visual system that honors system dark mode
   and print. Preserve the Go-authored coverage source, spans, selector, and
-  script byte-for-byte apart from tested's fixed head injection. Keep every
+  script byte-for-byte apart from tested's exactly removable head injection.
+  Let the embedded coverage explorer add package filtering, baseline-dependent
+  changed-file narrowing, bounded coverage-focused regions, and expandable
+  gaps without replacing the canonical fallback. Enable genuine unified/split
+  source changes only when `--coverage-diff-base` explicitly resolves to an
+  immutable local Git commit; never infer or fetch a baseline. Keep every
   report-owned HTML, CSS, and JavaScript source under `pkg/report/assets/` and
   compile it through Go's `embed` package; do not use runtime asset paths or
   restore large markup/style/script literals to Go files.
