@@ -993,6 +993,10 @@ func TestNewAnalyzerRejectsNegativeBudgets(t *testing.T) {
 			options: AnalyzerOptions{MaxNormalizedBytes: -1},
 		},
 		{
+			name:    "semantic line",
+			options: AnalyzerOptions{MaxSemanticLineBytes: -1},
+		},
+		{
 			name:    "diagnostics",
 			options: AnalyzerOptions{MaxDiagnostics: -1},
 		},

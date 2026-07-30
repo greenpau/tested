@@ -57,3 +57,10 @@ func BenchmarkSum(b *testing.B) {
 		_ = Sum(2, 3)
 	}
 }
+
+func BenchmarkZeroMetric(b *testing.B) {
+	b.ReportMetric(0, "ns/op")
+	for range b.N {
+		_ = Sum(2, 3)
+	}
+}

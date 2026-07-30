@@ -9,7 +9,9 @@
 {"Time":"2026-07-29T13:12:12.87509-04:00","Action":"output","Package":"example.com/tested-fixture","Test":"BenchmarkSum","Output":"BenchmarkSum     \t       1\t       167.0 ns/op\n"}
 {"Time":"2026-07-29T13:12:12.875392-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"BenchmarkSum     \t       1\t       417.0 ns/op\n"}
 {"Time":"2026-07-29T13:12:12.87589-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"BenchmarkSum-2   \t       1\t       750.0 ns/op\n"}
-{"Time":"2026-07-29T13:12:12.876097-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"BenchmarkSum-2   \t       1\t        84.00 ns/op\n"}
+{"Time":"2026-07-29T13:12:12.876097-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"BenchmarkSum-2   \t"}
+{"Time":"2026-07-29T13:12:12.876098-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"       "}
+{"Time":"2026-07-29T13:12:12.876099-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"1\n"}
 {"Time":"2026-07-29T13:12:12.876122-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"PASS\n"}
 {"Time":"2026-07-29T13:12:12.876717-04:00","Action":"output","Package":"example.com/tested-fixture","Output":"ok  \texample.com/tested-fixture\t0.207s\n"}
 {"Time":"2026-07-29T13:12:12.876724-04:00","Action":"pass","Package":"example.com/tested-fixture","Elapsed":0.208}

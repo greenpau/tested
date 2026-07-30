@@ -46,7 +46,7 @@ Important options:
 | `--color` | `auto` | ANSI color policy: `auto`, `always`, or `never` |
 | `--quiet` | disabled | Suppress live package completion lines |
 | `--slowest` | `10` | Number of slow occurrences in the final summary |
-| `--max-event-bytes` | 16 MiB | Largest JSON record decoded in memory; `0` is unlimited |
+| `--max-event-bytes` | 16 MiB | Largest JSON record and aggregate fragmented benchmark line assembled in memory; `0` disables the byte limit |
 | `--max-test-output-bytes` | 1 MiB | Output retained per normalized scope; `0` is unlimited |
 | `--max-total-output-bytes` | 64 MiB | Aggregate output retained across all normalized scopes; `0` is unlimited |
 | `--max-result-entries` | 1,000,000 | Aggregate normalized entities and retained chunks; `0` is unlimited |
@@ -455,6 +455,8 @@ truncated. tested never guesses that such an occurrence passed.
 
 ### JSON record exceeds the event limit
 
-Increase `--max-event-bytes` to at least 1024 or use `0` for unlimited decoding.
-The managed event-log bytes were still preserved. Treat unlimited decoding as a
-memory-trust decision.
+Increase `--max-event-bytes` to at least 1024 or use `0` to disable the byte
+limit for decoding and fragmented benchmark-line assembly. The managed
+event-log bytes were still preserved. A fixed benchmark fragment-count safety
+limit remains in effect; treat unlimited byte decoding as a memory-trust
+decision.

@@ -42,6 +42,12 @@ host, including app-level manifest withholding, instead of adding
 timing-sensitive shell signal choreography. Store disposable outputs below
 `t.TempDir`, `tmp`, or an ignored managed directory.
 
+Exercise repeated CPU benchmark occurrences and a benchmark that explicitly
+suppresses `ns/op` with `ReportMetric(0, "ns/op")`. Assert their normalized
+occurrence counts and absence of incompleteness; do not depend on whether
+`test2json` nondeterministically coalesces or splits the benchmark-name prefix
+and result writes.
+
 Keep the fixture module buildable with the minimum Go release. Exercise a
 Go 1.25 `testing.T.Attr` test directly and place any `testing.T.ArtifactDir`
 fixture in a `go1.26`-constrained file. On Go 1.26, run the artifact fixture

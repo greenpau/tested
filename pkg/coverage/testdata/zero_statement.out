@@ -1,5 +1,5 @@
 mode: set
-github.com/greenpau/caddy-security/caddyfile_authn_cookie.go:68.16,68.16 0 1
-github.com/greenpau/caddy-security/caddyfile_authn_cookie.go:69.14,70.20 1 0
-github.com/greenpau/caddy-security/caddyfile_authz_crypto.go:30.17,30.17 0 0
-github.com/greenpau/caddy-security/caddyfile_authz_crypto.go:31.10,32.95 1 1
+github.com/greenpau/tested/pkg/coverage/profile.go:68.16,68.16 0 1
+github.com/greenpau/tested/pkg/coverage/profile.go:69.14,70.20 1 0
+github.com/greenpau/tested/pkg/coverage/threshold.go:30.17,30.17 0 0
+github.com/greenpau/tested/pkg/coverage/threshold.go:31.10,32.95 1 1

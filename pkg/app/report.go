@@ -245,10 +245,11 @@ func executeReport(
 	}
 
 	analyzer, err := result.NewAnalyzer(result.AnalyzerOptions{
-		MaxOutputBytes:      options.MaximumOutputBytes,
-		MaxTotalOutputBytes: options.MaximumTotalOutputBytes,
-		MaxResultEntries:    options.MaximumResultEntries,
-		MaxNormalizedBytes:  options.MaximumNormalizedBytes,
+		MaxOutputBytes:       options.MaximumOutputBytes,
+		MaxTotalOutputBytes:  options.MaximumTotalOutputBytes,
+		MaxResultEntries:     options.MaximumResultEntries,
+		MaxNormalizedBytes:   options.MaximumNormalizedBytes,
+		MaxSemanticLineBytes: options.MaximumEventBytes,
 	})
 	if err != nil {
 		outcome.errors.add(err)

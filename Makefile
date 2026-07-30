@@ -185,6 +185,10 @@ e2e: build
 		-run '^$$' -bench '^BenchmarkSum$$' -benchtime=1x -cpu 1,2 -count=2
 	@grep -q '"benchmarked":4' ./testdata/fixture/.coverage/summary.json
 	@! grep -q '"incomplete":' ./testdata/fixture/.coverage/summary.json
+	@$(BINARY) run -C ./testdata/fixture --no-coverage --quiet -- \
+		-run '^$$' -bench '^BenchmarkZeroMetric$$' -benchtime=1x -cpu 1
+	@grep -q '"benchmarked":1' ./testdata/fixture/.coverage/summary.json
+	@! grep -q '"incomplete":' ./testdata/fixture/.coverage/summary.json
 	@echo "$@: complete"
 
 .PHONY: e2e-go126-metadata

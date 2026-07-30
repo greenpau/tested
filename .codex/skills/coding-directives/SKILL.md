@@ -5,10 +5,9 @@ description: Apply tested repository Go coding standards to implementation and r
 
 # Coding Directives
 
-Adapt the established `go-authcrunch` Go style to a standalone test tool:
-prefer cohesive types with methods, small consumer-owned interfaces, explicit
-package ownership, standard-library building blocks, wrapped errors, and
-focused table-driven tests.
+Apply `tested`'s established Go style: prefer cohesive types with methods,
+small consumer-owned interfaces, explicit package ownership, standard-library
+building blocks, wrapped errors, and focused table-driven tests.
 
 ## File and package discipline
 

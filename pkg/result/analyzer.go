@@ -35,6 +35,7 @@ const (
 	// model. Protocol and summary counts still describe discarded entries.
 	DefaultMaxDiagnostics  = 1000
 	signalTailBytes        = 256
+	maxBenchmarkFragments  = 8192
 	unknownActionBytes     = 256
 	diagnosticMessageBytes = 1024
 	diagnosticValueBytes   = 256
@@ -50,15 +51,20 @@ var ErrFinalized = errors.New("result analyzer is finalized")
 // scope, and MaxResultEntries bounds retained packages, builds, occurrences,
 // metadata, output chunks, and unknown-action summaries. MaxNormalizedBytes
 // bounds dynamically retained identity and metadata strings independently
-// from output text. Zero preserves an unlimited byte or entry budget.
-// Zero-length output chunks are ignored before output and entry accounting,
-// regardless of whether an output limit is configured.
+// from output text. MaxSemanticLineBytes bounds aggregate temporary benchmark
+// line assembly across packages. Zero preserves an unlimited byte or entry
+// budget. Zero-length output chunks are ignored before output and entry
+// accounting, regardless of whether an output limit is configured.
 type AnalyzerOptions struct {
 	MaxOutputBytes      int64
 	MaxTotalOutputBytes int64
 	MaxResultEntries    int64
 	MaxNormalizedBytes  int64
-	MaxDiagnostics      int
+	// MaxSemanticLineBytes bounds aggregate output temporarily retained to
+	// reassemble benchmark result lines split across protocol events. Zero
+	// explicitly disables this byte bound.
+	MaxSemanticLineBytes int64
+	MaxDiagnostics       int
 }
 
 // Analyzer incrementally aggregates protocol records. It is safe for
@@ -66,12 +72,13 @@ type AnalyzerOptions struct {
 type Analyzer struct {
 	mu sync.Mutex
 
-	maxOutputBytes      int64
-	maxTotalOutputBytes int64
-	maxResultEntries    int64
-	maxNormalizedBytes  int64
-	maxDiagnostics      int
-	nextSequence        uint64
+	maxOutputBytes       int64
+	maxTotalOutputBytes  int64
+	maxResultEntries     int64
+	maxNormalizedBytes   int64
+	maxSemanticLineBytes int64
+	maxDiagnostics       int
+	nextSequence         uint64
 
 	packages map[string]*packageState
 	builds   map[string]*buildState
@@ -97,6 +104,9 @@ type Analyzer struct {
 	normalizedBytesTruncated   bool
 	resultIncomplete           bool
 	resourceCapacityDiagnosed  bool
+	benchmarkAssemblyDiagnosed bool
+	pendingBenchmarkBytes      int64
+	pendingBenchmarkFragments  int64
 
 	diagnostics              []Diagnostic
 	diagnosticCount          uint64
@@ -114,15 +124,27 @@ type Analyzer struct {
 }
 
 type packageState struct {
-	value        Package
-	tests        []*testState
-	semanticTail string
-	signalTail   string
+	value            Package
+	tests            []*testState
+	pendingBenchmark *pendingBenchmarkOutput
+	semanticTail     string
+	signalTail       string
 }
 
 type buildState struct {
 	value      Build
 	signalTail string
+}
+
+type pendingBenchmarkOutput struct {
+	name              string
+	test              string
+	key               testKey
+	occurrence        *testState
+	text              []byte
+	bytes             int64
+	fragments         int64
+	invalidateOnAbort bool
 }
 
 type testState struct {
@@ -181,6 +203,9 @@ func NewAnalyzer(options AnalyzerOptions) (*Analyzer, error) {
 	if options.MaxNormalizedBytes < 0 {
 		return nil, fmt.Errorf("max normalized bytes must not be negative")
 	}
+	if options.MaxSemanticLineBytes < 0 {
+		return nil, fmt.Errorf("max semantic line bytes must not be negative")
+	}
 	if options.MaxDiagnostics < 0 {
 		return nil, fmt.Errorf("max diagnostics must not be negative")
 	}
@@ -189,17 +214,18 @@ func NewAnalyzer(options AnalyzerOptions) (*Analyzer, error) {
 		maxDiagnostics = DefaultMaxDiagnostics
 	}
 	return &Analyzer{
-		maxOutputBytes:      options.MaxOutputBytes,
-		maxTotalOutputBytes: options.MaxTotalOutputBytes,
-		maxResultEntries:    options.MaxResultEntries,
-		maxNormalizedBytes:  options.MaxNormalizedBytes,
-		maxDiagnostics:      maxDiagnostics,
-		packages:            make(map[string]*packageState),
-		builds:              make(map[string]*buildState),
-		ordinals:            make(map[testKey]uint64),
-		active:              make(map[testKey]*testState),
-		latest:              make(map[testKey]*testState),
-		unknownActions:      make(map[unknownActionKey]*UnknownAction),
+		maxOutputBytes:       options.MaxOutputBytes,
+		maxTotalOutputBytes:  options.MaxTotalOutputBytes,
+		maxResultEntries:     options.MaxResultEntries,
+		maxNormalizedBytes:   options.MaxNormalizedBytes,
+		maxSemanticLineBytes: options.MaxSemanticLineBytes,
+		maxDiagnostics:       maxDiagnostics,
+		packages:             make(map[string]*packageState),
+		builds:               make(map[string]*buildState),
+		ordinals:             make(map[testKey]uint64),
+		active:               make(map[testKey]*testState),
+		latest:               make(map[testKey]*testState),
+		unknownActions:       make(map[unknownActionKey]*UnknownAction),
 	}, nil
 }
 
@@ -236,6 +262,11 @@ func (a *Analyzer) AddRecord(record protocol.Record) error {
 	a.observeSequence(record.Sequence)
 	unknownDiagnosed := false
 	if record.Diagnostic != nil {
+		if record.Event == nil {
+			a.abortAllPendingBenchmarkOutputs(
+				"benchmark result interrupted by an invalid protocol record",
+			)
+		}
 		a.addDiagnostic(*record.Diagnostic)
 		unknownDiagnosed = record.Diagnostic.Kind == protocol.DiagnosticUnknown
 	}
@@ -260,6 +291,9 @@ func (a *Analyzer) Finalize(metadata RunMetadata) Result {
 	defer a.mu.Unlock()
 
 	if !a.finalized {
+		a.abortAllPendingBenchmarkOutputs(
+			"benchmark result line ended before a complete result was observed",
+		)
 		for key := range a.active {
 			delete(a.active, key)
 		}
@@ -371,6 +405,15 @@ func (a *Analyzer) addTestEvent(event protocol.Event, input *protocol.TestEvent)
 	}
 	pkg.value.LastSequence = event.Sequence
 
+	if input.Action == protocol.ActionOutput {
+		a.addOutputEvent(pkg, event, input)
+		return
+	}
+	a.abortPendingBenchmarkOutput(
+		pkg,
+		"benchmark result interrupted by a non-output event",
+	)
+
 	if input.Test == "" {
 		a.addPackageEvent(pkg, event, input)
 		return
@@ -404,35 +447,6 @@ func (a *Analyzer) addTestEvent(event protocol.Event, input *protocol.TestEvent)
 			}
 			a.appendTestOutput(pkg, test, event, input)
 		} else if test == nil && input.Output != "" {
-			a.observeDroppedOutput(
-				input.Output,
-				testOutputStringBytes(input.Package, input.Test),
-			)
-		}
-	case protocol.ActionOutput:
-		if name, ok := benchmarkOutputName(input.Output); ok &&
-			benchmarkNamesMatch(input.Test, name) {
-			test := a.benchmarkResultOccurrence(
-				pkg,
-				name,
-				&key,
-				event,
-				input,
-			)
-			if test != nil {
-				a.appendTestOutput(pkg, test, event, input)
-			} else {
-				a.observeDroppedOutput(
-					input.Output,
-					testOutputStringBytes(input.Package, name),
-				)
-			}
-			return
-		}
-		test := a.outputOccurrence(pkg, key, event, input)
-		if test != nil {
-			a.appendTestOutput(pkg, test, event, input)
-		} else {
 			a.observeDroppedOutput(
 				input.Output,
 				testOutputStringBytes(input.Package, input.Test),
@@ -493,26 +507,6 @@ func (a *Analyzer) addPackageEvent(
 		a.finishPackage(pkg, input, StatusFailed)
 	case protocol.ActionSkip:
 		a.finishPackage(pkg, input, StatusSkipped)
-	case protocol.ActionOutput:
-		if name, ok := benchmarkOutputName(input.Output); ok {
-			test := a.benchmarkResultOccurrence(
-				pkg,
-				name,
-				nil,
-				event,
-				input,
-			)
-			if test != nil {
-				a.appendTestOutput(pkg, test, event, input)
-			} else {
-				a.observeDroppedOutput(
-					input.Output,
-					testOutputStringBytes(input.Package, name),
-				)
-			}
-			return
-		}
-		a.appendPackageOutput(pkg, event, input)
 	case protocol.ActionAttr:
 		if a.reserveEntry(
 			event,
@@ -540,6 +534,272 @@ func (a *Analyzer) addPackageEvent(
 			a.appendPackageOutput(pkg, event, input)
 		}
 	}
+}
+
+func (a *Analyzer) addOutputEvent(
+	pkg *packageState,
+	event protocol.Event,
+	input *protocol.TestEvent,
+) {
+	if pending := pkg.pendingBenchmark; pending != nil {
+		if input.Test != pending.test {
+			a.abortPendingBenchmarkOutput(
+				pkg,
+				"benchmark result scope changed before the line completed",
+			)
+		} else if _, startsNext := benchmarkOutputPrefixName(
+			input.Output,
+		); startsNext {
+			a.abortPendingBenchmarkOutput(
+				pkg,
+				"benchmark result was interrupted by another result prefix",
+			)
+		} else {
+			retained := a.retainPendingBenchmarkText(
+				pending,
+				input.Output,
+			)
+			if !retained {
+				a.markBenchmarkAssemblyIncomplete(event)
+				a.abortPendingBenchmarkOutput(
+					pkg,
+					"benchmark result exceeded semantic assembly capacity",
+				)
+			} else if !strings.ContainsRune(input.Output, '\n') {
+				pending.occurrence.value.LastSequence = event.Sequence
+				a.appendTestOutput(
+					pkg,
+					pending.occurrence,
+					event,
+					input,
+				)
+				return
+			} else if name, complete := benchmarkOutputName(
+				string(pending.text),
+			); complete && name == pending.name {
+				pkg.pendingBenchmark = nil
+				a.releasePendingBenchmark(pending)
+				pending.occurrence.value.LastSequence = event.Sequence
+				a.appendTestOutput(
+					pkg,
+					pending.occurrence,
+					event,
+					input,
+				)
+				a.finishBenchmarkState(
+					pending.key,
+					pending.occurrence,
+					event,
+					input,
+				)
+				pending.occurrence.benchmarkResultObserved = true
+				return
+			} else {
+				a.abortPendingBenchmarkOutput(
+					pkg,
+					"benchmark result line was not a valid completion",
+				)
+			}
+			// The current output did not complete the pending line. Process it
+			// again as independent evidence instead of consuming a possible
+			// benchmark result or changing its source-order accounting.
+		}
+	}
+
+	if name, ok := benchmarkOutputName(input.Output); ok &&
+		(input.Test == "" || benchmarkNamesMatch(input.Test, name)) {
+		var preferredKey *testKey
+		if input.Test != "" {
+			key := testKey{pkg: input.Package, name: input.Test}
+			preferredKey = &key
+		}
+		test := a.benchmarkResultOccurrence(
+			pkg,
+			name,
+			preferredKey,
+			event,
+			input,
+		)
+		if test != nil {
+			a.appendTestOutput(pkg, test, event, input)
+		} else {
+			a.observeDroppedOutput(
+				input.Output,
+				testOutputStringBytes(input.Package, name),
+			)
+		}
+		return
+	}
+
+	if name, ok := benchmarkOutputPrefixName(input.Output); ok &&
+		(input.Test == "" || benchmarkNamesMatch(input.Test, name)) {
+		pending := &pendingBenchmarkOutput{
+			name: name,
+			test: input.Test,
+		}
+		if !a.retainPendingBenchmarkText(pending, input.Output) {
+			a.markBenchmarkAssemblyIncomplete(event)
+			a.appendOrdinaryOutputEvent(pkg, event, input)
+			return
+		}
+		var preferredKey *testKey
+		if input.Test != "" {
+			key := testKey{pkg: input.Package, name: input.Test}
+			preferredKey = &key
+		}
+		test, key, invalidateOnAbort := a.beginBenchmarkResultOccurrence(
+			pkg,
+			name,
+			preferredKey,
+			event,
+			input,
+		)
+		if test == nil {
+			a.releasePendingBenchmark(pending)
+			a.appendOrdinaryOutputEvent(pkg, event, input)
+			return
+		}
+		pending.key = key
+		pending.occurrence = test
+		pending.invalidateOnAbort = invalidateOnAbort
+		pkg.pendingBenchmark = pending
+		test.value.LastSequence = event.Sequence
+		a.appendTestOutput(pkg, test, event, input)
+		return
+	}
+
+	a.appendOrdinaryOutputEvent(pkg, event, input)
+}
+
+func (a *Analyzer) abortPendingBenchmarkOutput(
+	pkg *packageState,
+	reason string,
+) {
+	if pkg == nil || pkg.pendingBenchmark == nil {
+		return
+	}
+	pending := pkg.pendingBenchmark
+	pkg.pendingBenchmark = nil
+	a.releasePendingBenchmark(pending)
+	if !pending.invalidateOnAbort || pending.occurrence == nil {
+		return
+	}
+	a.invalidateOccurrence(pending.occurrence, reason)
+	pending.occurrence.phase = occurrenceTerminal
+	if a.active[pending.key] == pending.occurrence {
+		delete(a.active, pending.key)
+	}
+	a.latest[pending.key] = pending.occurrence
+}
+
+func (a *Analyzer) abortAllPendingBenchmarkOutputs(reason string) {
+	for _, pkg := range a.packages {
+		a.abortPendingBenchmarkOutput(pkg, reason)
+	}
+}
+
+func (a *Analyzer) retainPendingBenchmarkText(
+	pending *pendingBenchmarkOutput,
+	output string,
+) bool {
+	size := int64(len(output))
+	byteExceeded := a.maxSemanticLineBytes > 0 &&
+		size > a.maxSemanticLineBytes-a.pendingBenchmarkBytes
+	fragmentExceeded := a.pendingBenchmarkFragments >= maxBenchmarkFragments
+	if byteExceeded || fragmentExceeded {
+		return false
+	}
+	a.pendingBenchmarkBytes = saturatingAddInt64(
+		a.pendingBenchmarkBytes,
+		size,
+	)
+	a.pendingBenchmarkFragments++
+	pending.text = append(pending.text, output...)
+	pending.bytes = saturatingAddInt64(pending.bytes, size)
+	pending.fragments++
+	return true
+}
+
+func (a *Analyzer) releasePendingBenchmark(pending *pendingBenchmarkOutput) {
+	if pending == nil {
+		return
+	}
+	a.pendingBenchmarkBytes -= pending.bytes
+	if a.pendingBenchmarkBytes < 0 {
+		a.pendingBenchmarkBytes = 0
+	}
+	a.pendingBenchmarkFragments -= pending.fragments
+	if a.pendingBenchmarkFragments < 0 {
+		a.pendingBenchmarkFragments = 0
+	}
+}
+
+func (a *Analyzer) markBenchmarkAssemblyIncomplete(event protocol.Event) {
+	a.resultIncomplete = true
+	if a.benchmarkAssemblyDiagnosed {
+		return
+	}
+	a.benchmarkAssemblyDiagnosed = true
+	a.addDiagnostic(benchmarkAssemblyDiagnostic(
+		event,
+		a.maxSemanticLineBytes,
+		maxBenchmarkFragments,
+	))
+}
+
+func (a *Analyzer) beginBenchmarkResultOccurrence(
+	pkg *packageState,
+	name string,
+	preferredKey *testKey,
+	event protocol.Event,
+	input *protocol.TestEvent,
+) (*testState, testKey, bool) {
+	key := testKey{pkg: input.Package, name: benchmarkBaseName(name)}
+	if preferredKey != nil {
+		key = *preferredKey
+	}
+	if active := a.active[key]; active != nil {
+		active.value.Kind = TestKindBenchmark
+		active.value.LastSequence = event.Sequence
+		return active, key, true
+	}
+	if latest := a.latest[key]; latest != nil &&
+		latest.value.Status == StatusBenchmarked &&
+		!latest.benchmarkResultObserved {
+		latest.value.Kind = TestKindBenchmark
+		latest.value.LastSequence = event.Sequence
+		return latest, key, false
+	}
+
+	key = testKey{pkg: input.Package, name: name}
+	test := a.createOccurrence(pkg, key, event, input)
+	if test == nil {
+		return nil, testKey{}, false
+	}
+	test.value.StartedAt = nil
+	test.value.Kind = TestKindBenchmark
+	return test, key, true
+}
+
+func (a *Analyzer) appendOrdinaryOutputEvent(
+	pkg *packageState,
+	event protocol.Event,
+	input *protocol.TestEvent,
+) {
+	if input.Test == "" {
+		a.appendPackageOutput(pkg, event, input)
+		return
+	}
+	key := testKey{pkg: input.Package, name: input.Test}
+	test := a.outputOccurrence(pkg, key, event, input)
+	if test != nil {
+		a.appendTestOutput(pkg, test, event, input)
+		return
+	}
+	a.observeDroppedOutput(
+		input.Output,
+		testOutputStringBytes(input.Package, input.Test),
+	)
 }
 
 func packageLifecycleStatus(action string) (Status, bool) {
@@ -1452,6 +1712,27 @@ func occurrenceTransitionDiagnostic(
 	)
 }
 
+func benchmarkAssemblyDiagnostic(
+	event protocol.Event,
+	maxLineBytes int64,
+	maxFragments int64,
+) protocol.Diagnostic {
+	byteLimit := "unlimited"
+	if maxLineBytes > 0 {
+		byteLimit = strconv.FormatInt(maxLineBytes, 10)
+	}
+	return eventDiagnostic(
+		event,
+		protocol.DiagnosticIntegrity,
+		fmt.Sprintf(
+			"benchmark result line exceeded semantic assembly capacity "+
+				"(maximum bytes %s, maximum fragments %d)",
+			byteLimit,
+			maxFragments,
+		),
+	)
+}
+
 func metadataOrphanDiagnostic(
 	event protocol.Event,
 	id OccurrenceID,
@@ -2065,17 +2346,28 @@ func inferTestKind(name string) TestKind {
 }
 
 func benchmarkOutputName(output string) (string, bool) {
-	line := strings.TrimSpace(output)
-	if line == "" || strings.ContainsRune(line, '\n') {
+	if output == "" || output[len(output)-1] != '\n' {
+		return "", false
+	}
+	line := output[:len(output)-1]
+	if strings.HasSuffix(line, "\r") {
+		line = line[:len(line)-1]
+	}
+	if line == "" || strings.ContainsAny(line, "\r\n") {
+		return "", false
+	}
+	line = strings.TrimSpace(line)
+	if line == "" {
 		return "", false
 	}
 	fields := strings.Fields(line)
-	if len(fields) < 4 || (len(fields)-2)%2 != 0 ||
+	if len(fields) < 2 || (len(fields)-2)%2 != 0 ||
 		!isBenchmarkName(fields[0]) {
 		return "", false
 	}
 	count := strings.ReplaceAll(fields[1], ",", "")
-	if _, err := strconv.ParseUint(count, 10, 64); err != nil {
+	iterations, err := strconv.ParseUint(count, 10, 64)
+	if err != nil || iterations == 0 {
 		return "", false
 	}
 	for i := 2; i < len(fields); i += 2 {
@@ -2086,6 +2378,20 @@ func benchmarkOutputName(output string) (string, bool) {
 		}
 	}
 	return fields[0], true
+}
+
+func benchmarkOutputPrefixName(output string) (string, bool) {
+	if output == "" || strings.ContainsAny(output, "\r\n") ||
+		output[len(output)-1] != '\t' ||
+		strings.IndexByte(output, '\t') != len(output)-1 {
+		return "", false
+	}
+	name := strings.TrimRight(output[:len(output)-1], " ")
+	if name == "" || strings.IndexFunc(name, unicode.IsSpace) >= 0 ||
+		!isBenchmarkName(name) {
+		return "", false
+	}
+	return name, true
 }
 
 func isBenchmarkName(name string) bool {

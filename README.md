@@ -7,8 +7,8 @@ summaries, and CI artifacts.
 
 ![Go Test Report](./docs/images/test_report.png)
 
-The four legacy artifact names are compatible with the reports produced by the
-`caddy-security` Makefile; tested adds status-aware CI artifacts around them.
+`tested` owns a stable `.coverage` artifact bundle containing human-readable
+reports, machine-readable summaries, and the authoritative captured evidence.
 A coherent, coverage-enabled live run normally produces:
 
 ```text
@@ -201,7 +201,8 @@ answer different questions. `tested` labels them separately.
 
 ## Resource bounds
 
-`--max-event-bytes` defaults to 16 MiB per decoded event and
+`--max-event-bytes` defaults to 16 MiB per decoded event and also bounds
+aggregate temporary assembly of one fragmented Go benchmark result line.
 `--max-test-output-bytes` defaults to 1 MiB independently for each test
 occurrence, package, build, and unattributed output scope in derived reports.
 `--max-total-output-bytes` adds a 64 MiB run-wide retained-output budget, and
@@ -213,6 +214,8 @@ nonzero byte limits must be at least 1024 bytes. These limits never truncate
 the managed event log. Exhausting an entity or normalized-string budget marks
 the derived result incomplete; clipping derived output alone is reported as
 presentation loss because the raw log remains authoritative.
+Fragmented benchmark assembly retains a fixed fragment-count safety limit even
+when its byte bound is disabled.
 Each decoded event additionally permits at most 64 fields unknown to its
 selected schema and 64 KiB total decoded unknown-field names plus exact
 retained JSON values. Exceeding either extension bound or repeating a decoded

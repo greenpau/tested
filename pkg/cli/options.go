@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	// DefaultOutputDir is the caddy-security-compatible artifact directory.
+	// DefaultOutputDir is tested's managed artifact directory.
 	DefaultOutputDir = ".coverage"
 	// DefaultMaximumEventBytes bounds one decoded JSON event without limiting
 	// the byte-faithful raw event log.
@@ -519,7 +519,8 @@ Run options:
       --color MODE            auto, always, or never (default "auto")
       --quiet                 suppress live package progress
       --slowest N             include N slowest test occurrences (default 10)
-      --max-event-bytes N     maximum decoded JSON event size; 0 is unlimited
+      --max-event-bytes N     maximum JSON event/assembled benchmark line size;
+                              0 disables the byte limit
       --max-test-output-bytes N
                               per-test output limit in derived reports
       --max-total-output-bytes N

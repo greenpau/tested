@@ -101,6 +101,21 @@ Apply package and test transitions in event order:
 
 - Record `run` as the start of one occurrence.
 - Record output with source order and owning package/test when known.
+- Recognize a Go benchmark result containing only its benchmark name and
+  iteration count as terminal benchmark evidence. Go omits the metric pairs
+  when the measured `ns/op` is exactly zero. Reassemble the canonical,
+  literal-tab benchmark-name prefix with subsequent same-package,
+  same-test-scope output portions through their line ending when `test2json`
+  exposes one result as multiple events. Attribute the prefix immediately to a
+  provisional benchmark occurrence and account every portion under the normal
+  output budgets in source order. Bound aggregate assembly bytes and fragments;
+  retain an explicitly incomplete provisional occurrence when its scope
+  changes, its completion is malformed or missing, or capacity is exhausted.
+  Preserve an occurrence that already had independent terminal `bench`
+  evidence.
+  Capacity exhaustion also makes the derived result incomplete and emits one
+  bounded diagnostic. Preserve every original chunk on a successfully assembled
+  occurrence. Repeated result lines must still become distinct occurrences.
 - Accept `pass`, `fail`, and `skip` as terminal event outcomes.
 - Preserve package terminal state separately from child process state.
 - Preserve build failures even if no corresponding package event completes.
