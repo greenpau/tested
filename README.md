@@ -274,7 +274,18 @@ make self-test
 make e2e
 make cross-build
 make ci
+make release-check
+make release
 ```
+
+`make release` is an operator-controlled publication workflow modeled on the
+other Greenpau Go repositories. From a clean `main` branch, it requires the
+pinned `versioned` 1.0.36 tool, confirms that the next patch tag is absent
+locally and on `origin`, runs the complete `release-check`, increments
+`VERSION`, creates a repository-compliant release commit and annotated tag,
+then atomically pushes only `main` and that tag. The tag starts the GitHub
+release workflow. Do not invoke this target from CI or while unrelated work is
+present.
 
 Repository engineering contracts begin in [AGENTS.md](AGENTS.md) and route to
 the focused skills under `.codex/skills`.

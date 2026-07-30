@@ -203,6 +203,17 @@ Keep local packaging separate from tag creation and remote publication. Never
 change `VERSION`, create a commit or tag, push, publish a release, or upload
 artifacts unless the user explicitly requests that external state change.
 
+The operator-controlled `make release` target follows the repository family
+convention without inheriting its unsafe shortcuts. It requires a clean
+`main`, the reviewed `versioned` 1.0.36 binary, a configured `origin`, and an
+absent next-patch tag before running the complete `release-check`. It repeats
+the clean/tag check after CI, increments only `VERSION`, creates an `ops`
+commit with the required Before/After/Tests/More info sections, creates the
+annotated tag, then atomically pushes only `main` and that exact tag. Do not
+replace the narrow atomic push with `git push --tags`, and do not invoke the
+state-changing target during validation; use a dry run or an isolated local
+repository and local bare remote.
+
 ## Completion evidence
 
 Report the exact commands run, host/matrix coverage, pass or failure results,
