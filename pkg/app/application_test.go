@@ -30,6 +30,13 @@ import (
 	"github.com/greenpau/tested/pkg/runstatus"
 )
 
+func TestMain(m *testing.M) {
+	if os.Getenv("TESTED_APP_HELPER_EXIT_ONE") == "1" {
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
+
 func TestExecuteHelpVersionAndUsage(t *testing.T) {
 	t.Run("help", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
@@ -898,19 +905,21 @@ func TestCovered(t *testing.T) {
 `)
 
 	t.Run("process status truthfulness", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("uses Unix process fixtures")
+		testExecutable, err := os.Executable()
+		if err != nil {
+			t.Fatalf("resolve app test executable: %v", err)
 		}
 		workDir := t.TempDir()
 
 		t.Run("empty event stream with child exit one", func(t *testing.T) {
+			t.Setenv("TESTED_APP_HELPER_EXIT_ONE", "1")
 			var stdout, stderr bytes.Buffer
 			code := Execute(
 				context.Background(),
 				[]string{
 					"run",
 					"-C", workDir,
-					"--go", "/usr/bin/false",
+					"--go", testExecutable,
 					"--no-coverage",
 					"--quiet",
 					"--format", "json",
@@ -921,7 +930,7 @@ func TestCovered(t *testing.T) {
 			)
 			if code != ExitTestsFailed {
 				t.Fatalf(
-					"Execute(false) code = %d, want %d; stderr=%q",
+					"Execute(exit-one helper) code = %d, want %d; stderr=%q",
 					code,
 					ExitTestsFailed,
 					stderr.String(),
@@ -964,7 +973,7 @@ func TestCovered(t *testing.T) {
 			)
 			if code != ExitTestsFailed {
 				t.Fatalf(
-					"Execute(offline false) code = %d, want %d; stderr=%q",
+					"Execute(offline exit-one helper) code = %d, want %d; stderr=%q",
 					code,
 					ExitTestsFailed,
 					stderr.String(),

@@ -25,6 +25,7 @@ func waitCommand(
 	cmd *exec.Cmd,
 	state *commandWaitState,
 	_ time.Duration,
+	_ *processTreeOwner,
 ) (error, error) {
 	waitErr := cmd.Wait()
 	// This platform has no tested non-reaping observer. Disable all later

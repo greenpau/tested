@@ -25,6 +25,7 @@ func waitCommand(
 	cmd *exec.Cmd,
 	state *commandWaitState,
 	_ time.Duration,
+	_ *processTreeOwner,
 ) (error, error) {
 	waitErr := cmd.Wait()
 	_ = state.beginReap(nil)

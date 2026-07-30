@@ -74,7 +74,7 @@ func TestAcquireWindowsProcessTree(t *testing.T) {
 	}
 }
 
-func TestAcquireWindowsProcessTreeFallsBackForRestrictedJob(t *testing.T) {
+func TestAcquireWindowsProcessTreePreservesRestrictedJobFailure(t *testing.T) {
 	closed := false
 	owner, err := acquireWindowsProcessTree(7002, windowsJobOperations{
 		create: func() (syscall.Handle, error) {
@@ -92,11 +92,15 @@ func TestAcquireWindowsProcessTreeFallsBackForRestrictedJob(t *testing.T) {
 			return nil
 		},
 	})
-	if err != nil {
-		t.Fatalf("restricted job error = %v", err)
-	}
-	if owner.job != 0 || !closed {
-		t.Fatalf("restricted job owner = %#v, closed = %t", owner, closed)
+	if !errors.Is(err, syscall.ERROR_ACCESS_DENIED) ||
+		owner.job != 0 ||
+		!closed {
+		t.Fatalf(
+			"restricted job = (owner %#v, closed %t, error %v)",
+			owner,
+			closed,
+			err,
+		)
 	}
 }
 

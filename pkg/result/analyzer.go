@@ -153,6 +153,7 @@ type testState struct {
 	phase                   occurrencePhase
 	invalid                 bool
 	benchmarkResultObserved bool
+	benchmarkTerminalSeen   bool
 }
 
 type occurrencePhase uint8
@@ -359,6 +360,9 @@ func (a *Analyzer) addEvent(
 	switch event.Kind {
 	case protocol.EventKindTest:
 		if event.Test == nil {
+			a.abortAllPendingBenchmarkOutputs(
+				"benchmark result interrupted by an unverifiable test event",
+			)
 			a.recordUnknown(event, event.Kind, event.Action(), unknownDiagnosed)
 			return
 		}
@@ -374,6 +378,9 @@ func (a *Analyzer) addEvent(
 		a.addTestEvent(event, event.Test)
 	case protocol.EventKindBuild:
 		if event.Build == nil {
+			a.abortAllPendingBenchmarkOutputs(
+				"benchmark result interrupted by an unverifiable build event",
+			)
 			a.recordUnknown(event, event.Kind, event.Action(), unknownDiagnosed)
 			return
 		}
@@ -387,6 +394,9 @@ func (a *Analyzer) addEvent(
 		}
 		a.addBuildEvent(event, event.Build)
 	default:
+		a.abortAllPendingBenchmarkOutputs(
+			"benchmark result interrupted by an unknown event",
+		)
 		a.recordUnknown(event, event.Kind, event.Action(), unknownDiagnosed)
 		a.addUnknownOutput(event)
 	}
@@ -408,6 +418,12 @@ func (a *Analyzer) addTestEvent(event protocol.Event, input *protocol.TestEvent)
 	if input.Action == protocol.ActionOutput {
 		a.addOutputEvent(pkg, event, input)
 		return
+	}
+	if input.Action == protocol.ActionBench && input.Test != "" {
+		a.preservePendingBenchmarkForTerminalBench(
+			pkg,
+			testKey{pkg: input.Package, name: input.Test},
+		)
 	}
 	a.abortPendingBenchmarkOutput(
 		pkg,
@@ -692,6 +708,25 @@ func (a *Analyzer) abortPendingBenchmarkOutput(
 	a.latest[pending.key] = pending.occurrence
 }
 
+func (a *Analyzer) preservePendingBenchmarkForTerminalBench(
+	pkg *packageState,
+	key testKey,
+) {
+	if pkg == nil || pkg.pendingBenchmark == nil {
+		return
+	}
+	key = a.benchmarkLifecycleKey(key)
+	pending := pkg.pendingBenchmark
+	if pending.key != key || pending.occurrence == nil {
+		return
+	}
+	// A terminal bench event is independent authoritative evidence. Keep the
+	// already-attributed partial output, abandon its semantic assembly, and let
+	// the terminal event finish the same occurrence without weakening it to
+	// incomplete.
+	pending.invalidateOnAbort = false
+}
+
 func (a *Analyzer) abortAllPendingBenchmarkOutputs(reason string) {
 	for _, pkg := range a.packages {
 		a.abortPendingBenchmarkOutput(pkg, reason)
@@ -754,24 +789,26 @@ func (a *Analyzer) beginBenchmarkResultOccurrence(
 	event protocol.Event,
 	input *protocol.TestEvent,
 ) (*testState, testKey, bool) {
-	key := testKey{pkg: input.Package, name: benchmarkBaseName(name)}
-	if preferredKey != nil {
-		key = *preferredKey
-	}
-	if active := a.active[key]; active != nil {
-		active.value.Kind = TestKindBenchmark
-		active.value.LastSequence = event.Sequence
-		return active, key, true
-	}
-	if latest := a.latest[key]; latest != nil &&
-		latest.value.Status == StatusBenchmarked &&
-		!latest.benchmarkResultObserved {
-		latest.value.Kind = TestKindBenchmark
-		latest.value.LastSequence = event.Sequence
-		return latest, key, false
+	for _, key := range benchmarkResultCandidateKeys(
+		input.Package,
+		name,
+		preferredKey,
+	) {
+		if active := a.active[key]; active != nil {
+			active.value.Kind = TestKindBenchmark
+			active.value.LastSequence = event.Sequence
+			return active, key, true
+		}
+		if latest := a.latest[key]; latest != nil &&
+			latest.value.Status == StatusBenchmarked &&
+			!latest.benchmarkResultObserved {
+			latest.value.Kind = TestKindBenchmark
+			latest.value.LastSequence = event.Sequence
+			return latest, key, false
+		}
 	}
 
-	key = testKey{pkg: input.Package, name: name}
+	key := testKey{pkg: input.Package, name: name}
 	test := a.createOccurrence(pkg, key, event, input)
 	if test == nil {
 		return nil, testKey{}, false
@@ -1094,7 +1131,8 @@ func (a *Analyzer) finishOccurrence(
 
 	phase := test.phase
 	test.value.LastSequence = event.Sequence
-	if phase != occurrenceRunning {
+	evidenceTerminal := benchmarkEvidenceCanFinish(test, status)
+	if phase != occurrenceRunning && !evidenceTerminal {
 		a.invalidateOccurrence(
 			test,
 			fmt.Sprintf(
@@ -1117,6 +1155,21 @@ func (a *Analyzer) finishOccurrence(
 	delete(a.active, key)
 	a.latest[key] = test
 	return test
+}
+
+func benchmarkEvidenceCanFinish(test *testState, status Status) bool {
+	if test == nil ||
+		test.phase != occurrenceEvidence ||
+		test.value.Kind != TestKindBenchmark ||
+		test.value.OutputBytes == 0 {
+		return false
+	}
+	switch status {
+	case StatusBenchmarked, StatusFailed, StatusSkipped:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *Analyzer) invalidateOccurrence(test *testState, reason string) {
@@ -1174,6 +1227,23 @@ func (a *Analyzer) finishBenchmarkOccurrence(
 	event protocol.Event,
 	input *protocol.TestEvent,
 ) *testState {
+	key = a.benchmarkLifecycleKey(key)
+	if a.active[key] == nil {
+		if latest := a.latest[key]; latest != nil &&
+			latest.value.Status == StatusBenchmarked &&
+			latest.benchmarkResultObserved &&
+			!latest.benchmarkTerminalSeen {
+			// test2json may emit a complete package-scoped benchmark result
+			// before its test-scoped log output and terminal bench event. The
+			// result already finished the occurrence; accept exactly one later
+			// bench event as corroborating lifecycle evidence instead of
+			// weakening the valid result to an orphan transition.
+			latest.value.LastSequence = event.Sequence
+			a.recordOccurrenceFinish(latest, input)
+			latest.benchmarkTerminalSeen = true
+			return latest
+		}
+	}
 	test := a.finishOccurrence(
 		pkg,
 		key,
@@ -1185,7 +1255,19 @@ func (a *Analyzer) finishBenchmarkOccurrence(
 		return nil
 	}
 	test.value.Kind = TestKindBenchmark
+	test.benchmarkTerminalSeen = true
 	return test
+}
+
+func (a *Analyzer) benchmarkLifecycleKey(key testKey) testKey {
+	if a.active[key] != nil || a.latest[key] != nil {
+		return key
+	}
+	base := testKey{pkg: key.pkg, name: benchmarkBaseName(key.name)}
+	if base != key && (a.active[base] != nil || a.latest[base] != nil) {
+		return base
+	}
+	return key
 }
 
 func (a *Analyzer) benchmarkResultOccurrence(
@@ -1195,22 +1277,23 @@ func (a *Analyzer) benchmarkResultOccurrence(
 	event protocol.Event,
 	input *protocol.TestEvent,
 ) *testState {
-	baseKey := testKey{pkg: input.Package, name: benchmarkBaseName(name)}
-	candidateKey := baseKey
-	if preferredKey != nil {
-		candidateKey = *preferredKey
-	}
-	if active := a.active[candidateKey]; active != nil {
-		a.finishBenchmarkState(candidateKey, active, event, input)
-		active.benchmarkResultObserved = true
-		return active
-	}
-	if latest := a.latest[candidateKey]; latest != nil &&
-		latest.value.Status == StatusBenchmarked &&
-		!latest.benchmarkResultObserved {
-		a.finishBenchmarkState(candidateKey, latest, event, input)
-		latest.benchmarkResultObserved = true
-		return latest
+	for _, candidateKey := range benchmarkResultCandidateKeys(
+		input.Package,
+		name,
+		preferredKey,
+	) {
+		if active := a.active[candidateKey]; active != nil {
+			a.finishBenchmarkState(candidateKey, active, event, input)
+			active.benchmarkResultObserved = true
+			return active
+		}
+		if latest := a.latest[candidateKey]; latest != nil &&
+			latest.value.Status == StatusBenchmarked &&
+			!latest.benchmarkResultObserved {
+			a.finishBenchmarkState(candidateKey, latest, event, input)
+			latest.benchmarkResultObserved = true
+			return latest
+		}
 	}
 
 	key := testKey{pkg: input.Package, name: name}
@@ -1222,6 +1305,25 @@ func (a *Analyzer) benchmarkResultOccurrence(
 	a.finishBenchmarkState(key, test, event, input)
 	test.benchmarkResultObserved = true
 	return test
+}
+
+func benchmarkResultCandidateKeys(
+	pkg string,
+	name string,
+	preferredKey *testKey,
+) []testKey {
+	if preferredKey != nil {
+		return []testKey{*preferredKey}
+	}
+	exact := testKey{pkg: pkg, name: name}
+	base := testKey{pkg: pkg, name: benchmarkBaseName(name)}
+	if exact == base {
+		return []testKey{exact}
+	}
+	// A numeric suffix is ambiguous: it can be an exact subbenchmark identity
+	// or the CPU suffix added to a base benchmark. Preserve an observed exact
+	// identity before falling back to CPU-suffix attribution.
+	return []testKey{exact, base}
 }
 
 func (a *Analyzer) finishBenchmarkState(

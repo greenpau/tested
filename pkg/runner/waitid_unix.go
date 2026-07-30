@@ -42,6 +42,7 @@ func waitCommand(
 	cmd *exec.Cmd,
 	state *commandWaitState,
 	grace time.Duration,
+	_ *processTreeOwner,
 ) (error, error) {
 	return waitCommandWithObserver(
 		cmd,

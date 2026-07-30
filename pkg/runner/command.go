@@ -81,7 +81,12 @@ func RunCommand(ctx context.Context, options CommandOptions) error {
 	waitState := newCommandWaitState()
 	waitCh := make(chan commandWaitResult, 1)
 	go func() {
-		waitErr, preReapErr := waitCommand(cmd, waitState, grace)
+		waitErr, preReapErr := waitCommand(
+			cmd,
+			waitState,
+			grace,
+			&processTree,
+		)
 		waitCh <- commandWaitResult{
 			waitErr:    waitErr,
 			cleanupErr: preReapErr,

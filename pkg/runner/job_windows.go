@@ -30,7 +30,6 @@ const (
 	jobObjectExtendedLimitInformationClass = 9
 	jobObjectLimitKillOnClose              = 0x00002000
 	processSetQuota                        = 0x00000100
-	windowsErrorInvalidParameter           = syscall.Errno(87)
 )
 
 var (
@@ -108,14 +107,9 @@ func acquireWindowsProcessTree(
 	}
 	if err := operations.assign(job, pid); err != nil {
 		closeErr := operations.close(job)
-		// A process already inside a restrictive host or CI Job Object may
-		// reject nested assignment. Windows provides no safe way for tested to
-		// relax that host policy, so retain the bounded taskkill fallback.
-		if (errors.Is(err, syscall.ERROR_ACCESS_DENIED) ||
-			errors.Is(err, windowsErrorInvalidParameter)) &&
-			closeErr == nil {
-			return processTreeOwner{}, nil
-		}
+		// A restrictive host Job Object may reject nested assignment. Preserve
+		// that ownership failure: the pre-reap taskkill attempt is bounded but
+		// cannot provide the stable identity of tested's own Job Object.
 		return processTreeOwner{}, errors.Join(
 			fmt.Errorf("assign process %d to Windows job: %w", pid, err),
 			wrapWindowsCloseError(closeErr),
@@ -129,9 +123,9 @@ func acquireWindowsProcessTree(
 
 func cleanupOwnedProcessTree(
 	owner *processTreeOwner,
-	cmd *exec.Cmd,
+	_ *exec.Cmd,
 	timeout time.Duration,
-	leaderReaped bool,
+	_ bool,
 ) error {
 	if owner != nil && owner.job != 0 {
 		job := owner.job
@@ -139,32 +133,8 @@ func cleanupOwnedProcessTree(
 		owner.job = 0
 		owner.terminateAndClose = nil
 		releaseErr := release(job, timeout)
-		if releaseErr == nil {
-			return nil
-		}
-		return errors.Join(
-			releaseErr,
-			fallbackWindowsTreeCleanup(cmd, timeout, leaderReaped),
-		)
+		return releaseErr
 	}
-	return fallbackWindowsTreeCleanup(cmd, timeout, leaderReaped)
-}
-
-func fallbackWindowsTreeCleanup(
-	cmd *exec.Cmd,
-	timeout time.Duration,
-	leaderReaped bool,
-) error {
-	if cmd.Process == nil {
-		return nil
-	}
-	if !leaderReaped {
-		return killProcessTree(cmd, timeout)
-	}
-	// A reaped PID is not a stable tree identity. taskkill is retained as a
-	// bounded compatibility attempt, but its "not found" result cannot
-	// distinguish an empty tree from a child reparented by a restrictive job.
-	_ = taskkillProcessTree(cmd.Process.Pid, timeout)
 	return nil
 }
 

@@ -429,6 +429,36 @@ func TestWaitAfterForcedTerminationIsBounded(t *testing.T) {
 	}
 }
 
+func TestForcedTerminationTimeoutPreservesCommittedReap(t *testing.T) {
+	waitState := newCommandWaitState()
+	if err := waitState.beginReap(nil); err != nil {
+		t.Fatalf("beginReap() error = %v", err)
+	}
+	waitErr := errors.New("authoritative wait result")
+	waitCh := make(chan commandWaitResult, 1)
+	waitCh <- commandWaitResult{waitErr: waitErr}
+	retryCalled := false
+
+	waitResult, cleanupErr := resolveForcedTerminationTimeout(
+		waitCh,
+		waitState,
+		func() error {
+			retryCalled = true
+			return errors.New("unsafe post-reap retry")
+		},
+	)
+	if !errors.Is(waitResult.waitErr, waitErr) {
+		t.Fatalf("wait error = %v, want %v", waitResult.waitErr, waitErr)
+	}
+	if cleanupErr != nil || retryCalled {
+		t.Fatalf(
+			"committed reap cleanup = (%v, retry called %t)",
+			cleanupErr,
+			retryCalled,
+		)
+	}
+}
+
 type fixedErrorWriter struct {
 	err error
 }

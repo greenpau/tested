@@ -110,12 +110,25 @@ Apply package and test transitions in event order:
   provisional benchmark occurrence and account every portion under the normal
   output budgets in source order. Bound aggregate assembly bytes and fragments;
   retain an explicitly incomplete provisional occurrence when its scope
-  changes, its completion is malformed or missing, or capacity is exhausted.
+  changes, an unscoped event makes continuity unverifiable, its completion is
+  malformed or missing, or capacity is exhausted.
+  Resolve an already observed exact benchmark identity before interpreting a
+  trailing numeric `-N` as a CPU suffix and falling back to its base identity.
   Preserve an occurrence that already had independent terminal `bench`
   evidence.
   Capacity exhaustion also makes the derived result incomplete and emits one
   bounded diagnostic. Preserve every original chunk on a successfully assembled
   occurrence. Repeated result lines must still become distinct occurrences.
+  Keep independent terminal `bench` evidence authoritative whether it arrives
+  before or after an interrupted partial result line. When `test2json` emits a
+  complete package-scoped result before test-scoped benchmark logs and the
+  terminal `bench` action, accept exactly one matching terminal action as
+  corroborating the already completed occurrence; a duplicate remains an
+  integrity violation. `test2json` can also omit `run` when a benchmark report
+  and its test-scoped log output precede `bench`, `fail`, or `skip`. Allow those
+  three terminal actions to finish an inferred benchmark evidence occurrence
+  with nonempty test-scoped output; keep ordinary orphan terminals and a
+  benchmark `pass` invalid.
 - Accept `pass`, `fail`, and `skip` as terminal event outcomes.
 - Preserve package terminal state separately from child process state.
 - Preserve build failures even if no corresponding package event completes.
@@ -165,6 +178,28 @@ signal interval.
 Handle races between natural exit and cancellation idempotently. Never signal a
 reused process identifier after ownership has ended, and never return while an
 owned child or pipe goroutine can still mutate artifacts.
+
+Use a non-reaping exit observer where the platform provides one. Commit the
+wait-state transition that disables process-tree signaling before `Cmd.Wait`
+releases the stable child identity. On Windows, observe the process handle
+becoming signaled before reaping and retain an assigned Job Object through
+post-wait cleanup. If the observer fails, fail closed by terminating the owned
+tree before disabling signaling and reaping, and bound that fallback reap in
+case termination also fails. Never pass a reaped numeric PID to `taskkill`. If
+Job Object assignment fails, preserve the ownership error and make only a
+bounded pre-reap `taskkill` attempt while the original process handle still
+reserves the leader PID. After reaping, use only the stable Job Object and
+preserve any ownership or cleanup error.
+
+Treat test-helper control files as bounded protocols. Publish content-bearing
+records completely to a same-directory temporary file and atomically rename
+them into view; require an explicit completion delimiter and retry absent,
+empty, or unterminated observations until a deadline. Use existence-only
+markers only when their contents are irrelevant and install the guarded state
+before creating them. On setup failure, cancel and join the helper, and disable
+numeric-PID cleanup immediately after observing that the process is gone. Have
+the parent signal a blocking helper and bound its wait; do not let a helper race
+asynchronous self-signal delivery against a fallback exit.
 
 Classify programmatic cancellation, deadline expiry, SIGINT, and SIGTERM
 separately. Preserve the observed child status, but project cancellation to the
@@ -228,6 +263,8 @@ default `run.json` for an explicit custom event stream.
   diagnostic, and leaves affected active state incomplete.
 - Output beyond the per-occurrence report bound is marked as truncated while
   the raw JSONL remains byte-for-byte complete.
+- A helper publishes a complete PID record atomically; partial observations
+  cannot trigger parsing, leaked goroutines, or reused-PID signaling.
 - Cancellation terminates descendants, drains both streams, reaps the child,
   and returns cancellation even if rendering later fails.
 - A renderer failure after a child test failure is reported but does not

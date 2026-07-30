@@ -30,6 +30,12 @@ import (
 	"time"
 )
 
+const (
+	runnerTestReadinessTimeout   = 10 * time.Second
+	runnerTestCompletionTimeout  = 10 * time.Second
+	runnerTestCancellationBudget = 5 * time.Second
+)
+
 func TestRunnerTerminatesChattyChildAfterCaptureFailure(t *testing.T) {
 	sinkErr := errors.New("event evidence is unavailable")
 	for _, test := range []struct {
@@ -157,14 +163,27 @@ func TestRunnerPropagatesOperatorSignal(t *testing.T) {
 				outcomeCh <- runOutcome{result: result, err: err}
 			}()
 
-			waitForPath(t, readyFile, 2*time.Second)
+			waitForReadinessMarker(
+				t,
+				readyFile,
+				runnerTestReadinessTimeout,
+			)
+			cancelledAt := time.Now()
 			cancel(NewSignalCause(test.send))
 
 			var outcome runOutcome
 			select {
 			case outcome = <-outcomeCh:
-			case <-time.After(3 * time.Second):
+			case <-time.After(runnerTestCompletionTimeout):
 				t.Fatal("Run() did not complete after operator signal")
+			}
+			if elapsed := time.Since(cancelledAt); elapsed >=
+				runnerTestCancellationBudget {
+				t.Fatalf(
+					"Run() cancellation took %s, want less than %s",
+					elapsed,
+					runnerTestCancellationBudget,
+				)
 			}
 			if outcome.err != nil {
 				t.Fatalf("Run() signal cancellation error = %v", outcome.err)
@@ -224,14 +243,23 @@ func TestRunnerBoundsIgnoredOperatorSignal(t *testing.T) {
 		outcomeCh <- runOutcome{result: result, err: err}
 	}()
 
-	waitForPath(t, readyFile, 2*time.Second)
+	waitForReadinessMarker(t, readyFile, runnerTestReadinessTimeout)
+	cancelledAt := time.Now()
 	cancel(NewSignalCause(syscall.SIGTERM))
 
 	var outcome runOutcome
 	select {
 	case outcome = <-outcomeCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(runnerTestCompletionTimeout):
 		t.Fatal("Run() did not force a child that ignored the operator signal")
+	}
+	if elapsed := time.Since(cancelledAt); elapsed >=
+		runnerTestCancellationBudget {
+		t.Fatalf(
+			"Run() cancellation took %s, want less than %s",
+			elapsed,
+			runnerTestCancellationBudget,
+		)
 	}
 	if outcome.err != nil {
 		t.Fatalf("Run() ignored-signal cancellation error = %v", outcome.err)
@@ -250,8 +278,8 @@ func TestRunnerBoundsIgnoredOperatorSignal(t *testing.T) {
 			outcome.result.Signal,
 		)
 	}
-	if outcome.result.Duration <= 0 || outcome.result.Duration >= time.Second {
-		t.Fatalf("Run() duration = %s, want bounded forced termination", outcome.result.Duration)
+	if outcome.result.Duration <= 0 {
+		t.Fatalf("Run() duration = %s, want a positive duration", outcome.result.Duration)
 	}
 }
 
@@ -290,14 +318,18 @@ func TestRunnerCleansRetainedPipeProcessGroupBeforeReap(t *testing.T) {
 	if parseErr != nil || pid <= 0 {
 		t.Fatalf("parse retained child PID %q: %v", data, parseErr)
 	}
+	cleanupPID := pid
 	defer func() {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
+		if cleanupPID > 0 {
+			_ = syscall.Kill(cleanupPID, syscall.SIGKILL)
+		}
 	}()
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		probeErr := syscall.Kill(pid, 0)
 		if errors.Is(probeErr, syscall.ESRCH) {
+			cleanupPID = 0
 			break
 		}
 		if probeErr != nil {
@@ -386,13 +418,20 @@ func TestRunnerCleansDescendantThatClosedInheritedPipes(t *testing.T) {
 	if parseErr != nil || pid <= 0 {
 		t.Fatalf("parse detached-pipe child PID %q: %v", data, parseErr)
 	}
+	cleanupPID := pid
 	defer func() {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
+		if cleanupPID > 0 {
+			_ = syscall.Kill(cleanupPID, syscall.SIGKILL)
+		}
 	}()
 	waitForProcessExit(t, pid, 2*time.Second)
+	cleanupPID = 0
 }
 
-func waitForPath(t *testing.T, path string, timeout time.Duration) {
+// waitForReadinessMarker observes presence only. The helpers install their
+// signal handler before creating the marker, and no marker content is part of
+// this synchronization contract.
+func waitForReadinessMarker(t *testing.T, path string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {

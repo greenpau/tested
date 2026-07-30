@@ -148,7 +148,12 @@ func (r *Runner) Run(ctx context.Context, options Options) (Result, error) {
 	waitState := newCommandWaitState()
 	waitCh := make(chan commandWaitResult, 1)
 	go func() {
-		waitErr, preReapErr := waitCommand(cmd, waitState, grace)
+		waitErr, preReapErr := waitCommand(
+			cmd,
+			waitState,
+			grace,
+			&processTree,
+		)
 		waitCh <- commandWaitResult{
 			waitErr:    waitErr,
 			cleanupErr: preReapErr,
@@ -458,10 +463,44 @@ func waitAfterForcedTermination(
 	case <-waitState.startedReaping():
 		return <-waitCh, nil
 	case <-timer.C:
-		var cleanupErr error
-		if retryKill != nil {
-			_, cleanupErr = waitState.signal(retryKill)
+		return resolveForcedTerminationTimeout(
+			waitCh,
+			waitState,
+			retryKill,
+		)
+	}
+}
+
+func resolveForcedTerminationTimeout(
+	waitCh <-chan commandWaitResult,
+	waitState *commandWaitState,
+	retryKill func() error,
+) (commandWaitResult, error) {
+	if waitState == nil {
+		return commandWaitResult{waitErr: ErrTerminationTimeout}, nil
+	}
+
+	var cleanupErr error
+	if retryKill != nil {
+		attempted, retryErr := waitState.signal(retryKill)
+		cleanupErr = retryErr
+		if !attempted {
+			// beginReap has already committed ownership to Cmd.Wait. Returning
+			// a timeout now would race that irreversible transition and report
+			// an unreaped child even though the bounded reap is in progress.
+			return <-waitCh, cleanupErr
 		}
+	}
+
+	// The reap transition may have committed while the timeout case was
+	// selected or immediately after the retry completed. Prefer that
+	// authoritative completion over a scheduler-boundary timeout.
+	select {
+	case waitResult := <-waitCh:
+		return waitResult, cleanupErr
+	case <-waitState.startedReaping():
+		return <-waitCh, cleanupErr
+	default:
 		return commandWaitResult{waitErr: ErrTerminationTimeout}, cleanupErr
 	}
 }

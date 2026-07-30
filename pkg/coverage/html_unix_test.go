@@ -20,13 +20,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
+)
+
+const (
+	maxCoveragePIDRecordBytes = 32
+	coveragePIDPollInterval   = 10 * time.Millisecond
 )
 
 func TestGenerateHTMLCancellationTerminatesRetainedStderrDescendant(
@@ -35,10 +40,14 @@ func TestGenerateHTMLCancellationTerminatesRetainedStderrDescendant(
 	projectDir := t.TempDir()
 	pidPath := filepath.Join(projectDir, "descendant.pid")
 	script := writeScript(t, projectDir, "blocking-go", fmt.Sprintf(`#!/bin/sh
+set -eu
 trap '' INT TERM
 sh -c 'trap "" INT TERM; while :; do sleep 1; done' >&2 &
 child=$!
-printf '%%s' "$child" > %s
+pid_file=%s
+pid_tmp="${pid_file}.tmp"
+printf '%%s\n' "$child" > "$pid_tmp"
+mv "$pid_tmp" "$pid_file"
 wait "$child"
 `, shellQuote(pidPath)))
 	output := filepath.Join(projectDir, "coverage.html")
@@ -50,7 +59,6 @@ wait "$child"
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	outcomeCh := make(chan error, 1)
-	started := time.Now()
 	go func() {
 		outcomeCh <- GenerateHTML(ctx, HTMLOptions{
 			GoCommand:      script,
@@ -61,9 +69,28 @@ wait "$child"
 		})
 	}()
 
-	pid := waitForCoverageDescendantPID(t, pidPath, 2*time.Second)
+	pid, err := waitForCoverageDescendantPID(pidPath, 2*time.Second)
+	if err != nil {
+		cancel()
+		select {
+		case cleanupErr := <-outcomeCh:
+			t.Fatalf(
+				"wait for coverage descendant: %v; GenerateHTML cleanup: %v",
+				err,
+				cleanupErr,
+			)
+		case <-time.After(2 * time.Second):
+			t.Fatalf(
+				"wait for coverage descendant: %v; GenerateHTML cleanup timed out",
+				err,
+			)
+		}
+	}
+	cleanupPID := pid
 	defer func() {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
+		if cleanupPID > 0 {
+			_ = syscall.Kill(cleanupPID, syscall.SIGKILL)
+		}
 	}()
 	cancel()
 
@@ -75,10 +102,10 @@ wait "$child"
 	case <-time.After(2 * time.Second):
 		t.Fatal("GenerateHTML() did not bound cancellation and pipe draining")
 	}
-	if elapsed := time.Since(started); elapsed >= 2*time.Second {
-		t.Fatalf("GenerateHTML() cancellation took %s, want less than 2s", elapsed)
+	if err := waitForCoverageProcessGone(pid, 2*time.Second); err != nil {
+		t.Fatal(err)
 	}
-	waitForCoverageProcessGone(t, pid, 2*time.Second)
+	cleanupPID = 0
 
 	data, err := os.ReadFile(output)
 	if err != nil {
@@ -90,50 +117,141 @@ wait "$child"
 	assertNoTemporaryFiles(t, projectDir)
 }
 
-func waitForCoverageDescendantPID(
+func TestWaitForCoverageDescendantPIDRequiresCompletePublication(
 	t *testing.T,
-	path string,
-	timeout time.Duration,
-) int {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for {
-		data, err := os.ReadFile(path)
-		if err == nil {
-			pid, parseErr := strconv.Atoi(strings.TrimSpace(string(data)))
-			if parseErr != nil || pid <= 0 {
-				t.Fatalf("parse descendant PID %q: %v", data, parseErr)
-			}
-			return pid
+) {
+	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
+	if err := os.WriteFile(pidPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	writeErrCh := make(chan error, 1)
+	go func() {
+		time.Sleep(25 * time.Millisecond)
+		if err := os.WriteFile(pidPath, []byte("73"), 0o600); err != nil {
+			writeErrCh <- err
+			return
 		}
-		if !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("read descendant PID: %v", err)
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("descendant PID was not written within %s", timeout)
-		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(25 * time.Millisecond)
+		writeErrCh <- os.WriteFile(pidPath, []byte("731\n"), 0o600)
+	}()
+
+	pid, err := waitForCoverageDescendantPID(pidPath, time.Second)
+	if writeErr := <-writeErrCh; writeErr != nil {
+		t.Fatalf("publish descendant PID: %v", writeErr)
+	}
+	if err != nil {
+		t.Fatalf("waitForCoverageDescendantPID() error = %v", err)
+	}
+	if pid != 731 {
+		t.Fatalf("waitForCoverageDescendantPID() = %d, want 731", pid)
 	}
 }
 
+func waitForCoverageDescendantPID(
+	path string,
+	timeout time.Duration,
+) (int, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		pid, ready, err := readCoverageDescendantPID(path)
+		if err != nil {
+			return 0, err
+		}
+		if ready {
+			return pid, nil
+		}
+		if !time.Now().Before(deadline) {
+			return 0, fmt.Errorf(
+				"complete descendant PID was not published within %s",
+				timeout,
+			)
+		}
+		delay := min(coveragePIDPollInterval, time.Until(deadline))
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+	}
+}
+
+func readCoverageDescendantPID(path string) (int, bool, error) {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("open descendant PID: %w", err)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(
+		file,
+		maxCoveragePIDRecordBytes+1,
+	))
+	closeErr := file.Close()
+	if err := errors.Join(readErr, closeErr); err != nil {
+		return 0, false, fmt.Errorf("read descendant PID: %w", err)
+	}
+	if len(data) > maxCoveragePIDRecordBytes {
+		return 0, false, fmt.Errorf(
+			"descendant PID record exceeds %d bytes",
+			maxCoveragePIDRecordBytes,
+		)
+	}
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		return 0, false, nil
+	}
+
+	digits := data[:len(data)-1]
+	if len(digits) == 0 || digits[0] == '0' {
+		return 0, false, fmt.Errorf(
+			"invalid descendant PID record %q",
+			data,
+		)
+	}
+	for _, value := range digits {
+		if value < '0' || value > '9' {
+			return 0, false, fmt.Errorf(
+				"invalid descendant PID record %q",
+				data,
+			)
+		}
+	}
+	pid, err := strconv.Atoi(string(digits))
+	if err != nil {
+		return 0, false, fmt.Errorf(
+			"parse descendant PID record %q: %w",
+			data,
+			err,
+		)
+	}
+	if pid <= 0 {
+		return 0, false, fmt.Errorf(
+			"invalid descendant PID record %q",
+			data,
+		)
+	}
+	return pid, true, nil
+}
+
 func waitForCoverageProcessGone(
-	t *testing.T,
 	pid int,
 	timeout time.Duration,
-) {
-	t.Helper()
+) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		err := syscall.Kill(pid, 0)
 		if errors.Is(err, syscall.ESRCH) {
-			return
+			return nil
 		}
 		if err != nil && !errors.Is(err, syscall.EPERM) {
-			t.Fatalf("inspect descendant process %d: %v", pid, err)
+			return fmt.Errorf("inspect descendant process %d: %w", pid, err)
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("descendant process %d remained after %s", pid, timeout)
+			return fmt.Errorf(
+				"descendant process %d remained after %s",
+				pid,
+				timeout,
+			)
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(coveragePIDPollInterval)
 	}
 }

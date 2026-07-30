@@ -17,22 +17,39 @@
 package runner
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func TestProcessStatusPreservesSignal(t *testing.T) {
 	if os.Getenv("TESTED_SIGNAL_HELPER") == "1" {
-		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
-		os.Exit(99)
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestProcessStatusPreservesSignal")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(
+		ctx,
+		os.Args[0],
+		"-test.run=TestProcessStatusPreservesSignal",
+	)
 	cmd.Env = append(os.Environ(), "TESTED_SIGNAL_HELPER=1")
-	err := cmd.Run()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start signal helper: %v", err)
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		t.Fatalf("signal helper: %v", err)
+	}
+	err := cmd.Wait()
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
 		t.Fatalf("helper error = %v, want *exec.ExitError", err)

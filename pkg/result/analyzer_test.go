@@ -1360,6 +1360,756 @@ func TestAnalyzerInterruptedResultPreservesTerminalBenchEvent(t *testing.T) {
 	}
 }
 
+func TestAnalyzerTerminalBenchPreservesInterruptedResultEvidence(t *testing.T) {
+	analyzer := New()
+	events := []protocol.Event{
+		testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+		testEvent(2, time.Time{}, protocol.ActionRun, "bench", "BenchmarkTerminal", "", nil, ""),
+		testEvent(3, time.Time{}, protocol.ActionOutput, "bench", "", "BenchmarkTerminal \t", nil, ""),
+		testEvent(4, time.Time{}, protocol.ActionBench, "bench", "BenchmarkTerminal", "", nil, ""),
+		testEvent(5, time.Time{}, protocol.ActionPass, "bench", "", "", nil, ""),
+	}
+	for _, event := range events {
+		if err := analyzer.Add(event); err != nil {
+			t.Fatalf("Add() unexpected error: %v", err)
+		}
+	}
+
+	got := analyzer.Finalize(RunMetadata{})
+	benchmark := findTest(t, got.Packages[0], "BenchmarkTerminal", 1)
+	if benchmark.Status != StatusBenchmarked ||
+		benchmark.Kind != TestKindBenchmark ||
+		len(benchmark.Output) != 1 ||
+		benchmark.Output[0].Text != "BenchmarkTerminal \t" ||
+		got.Summary.Tests.Benchmarked != 1 ||
+		got.Summary.Tests.Incomplete != 0 {
+		t.Fatalf("terminal benchmark after partial result = %#v", got)
+	}
+}
+
+func TestAnalyzerPackageResultPrefersExactNumericSubbenchmark(t *testing.T) {
+	tests := []struct {
+		name   string
+		output []string
+	}{
+		{
+			name:   "complete result",
+			output: []string{"BenchmarkGroup/case-4 1 9 ns/op\n"},
+		},
+		{
+			name:   "fragmented result",
+			output: []string{"BenchmarkGroup/case-4 \t", "1\n"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer := New()
+			events := []protocol.Event{
+				testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+				testEvent(
+					2,
+					time.Time{},
+					protocol.ActionRun,
+					"bench",
+					"BenchmarkGroup/case-4",
+					"",
+					nil,
+					"",
+				),
+			}
+			for i, output := range test.output {
+				events = append(events, testEvent(
+					uint64(i+3),
+					time.Time{},
+					protocol.ActionOutput,
+					"bench",
+					"",
+					output,
+					nil,
+					"",
+				))
+			}
+			events = append(events, testEvent(
+				uint64(len(events)+1),
+				time.Time{},
+				protocol.ActionPass,
+				"bench",
+				"",
+				"",
+				nil,
+				"",
+			))
+			for _, event := range events {
+				if err := analyzer.Add(event); err != nil {
+					t.Fatalf("Add() unexpected error: %v", err)
+				}
+			}
+
+			got := analyzer.Finalize(RunMetadata{})
+			if len(got.Packages) != 1 || len(got.Packages[0].Tests) != 1 {
+				t.Fatalf("numeric subbenchmark occurrences = %#v", got)
+			}
+			benchmark := findTest(
+				t,
+				got.Packages[0],
+				"BenchmarkGroup/case-4",
+				1,
+			)
+			if benchmark.Status != StatusBenchmarked ||
+				len(benchmark.Output) != len(test.output) ||
+				got.Summary.Tests.Benchmarked != 1 ||
+				got.Summary.Tests.Incomplete != 0 {
+				t.Fatalf("numeric subbenchmark result = %#v", got)
+			}
+		})
+	}
+}
+
+func TestAnalyzerPackageResultFallsBackToActiveBenchmarkBase(t *testing.T) {
+	tests := []struct {
+		name   string
+		output []string
+	}{
+		{
+			name:   "complete result",
+			output: []string{"BenchmarkFallback-8 1 9 ns/op\n"},
+		},
+		{
+			name:   "fragmented result",
+			output: []string{"BenchmarkFallback-8 \t", "1\n"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer := New()
+			events := []protocol.Event{
+				testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+				testEvent(
+					2,
+					time.Time{},
+					protocol.ActionRun,
+					"bench",
+					"BenchmarkFallback",
+					"",
+					nil,
+					"",
+				),
+			}
+			for _, output := range test.output {
+				events = append(events, testEvent(
+					uint64(len(events)+1),
+					time.Time{},
+					protocol.ActionOutput,
+					"bench",
+					"",
+					output,
+					nil,
+					"",
+				))
+			}
+			events = append(events, testEvent(
+				uint64(len(events)+1),
+				time.Time{},
+				protocol.ActionPass,
+				"bench",
+				"",
+				"",
+				nil,
+				"",
+			))
+			for _, event := range events {
+				if err := analyzer.Add(event); err != nil {
+					t.Fatalf("Add() unexpected error: %v", err)
+				}
+			}
+
+			got := analyzer.Finalize(RunMetadata{})
+			if len(got.Packages) != 1 || len(got.Packages[0].Tests) != 1 {
+				t.Fatalf("base fallback occurrences = %#v", got)
+			}
+			benchmark := findTest(
+				t,
+				got.Packages[0],
+				"BenchmarkFallback",
+				1,
+			)
+			if benchmark.Status != StatusBenchmarked ||
+				len(benchmark.Output) != len(test.output) ||
+				got.Summary.Tests.Benchmarked != 1 ||
+				got.Summary.Tests.Incomplete != 0 {
+				t.Fatalf("base fallback result = %#v", got)
+			}
+		})
+	}
+}
+
+func TestAnalyzerPackageResultPrefersTerminalExactOverActiveBase(t *testing.T) {
+	analyzer := New()
+	events := []protocol.Event{
+		testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+		testEvent(
+			2,
+			time.Time{},
+			protocol.ActionRun,
+			"bench",
+			"BenchmarkGroup/case-4",
+			"",
+			nil,
+			"",
+		),
+		testEvent(
+			3,
+			time.Time{},
+			protocol.ActionBench,
+			"bench",
+			"BenchmarkGroup/case-4",
+			"",
+			nil,
+			"",
+		),
+		testEvent(
+			4,
+			time.Time{},
+			protocol.ActionRun,
+			"bench",
+			"BenchmarkGroup/case",
+			"",
+			nil,
+			"",
+		),
+		testEvent(
+			5,
+			time.Time{},
+			protocol.ActionOutput,
+			"bench",
+			"",
+			"BenchmarkGroup/case-4 1 9 ns/op\n",
+			nil,
+			"",
+		),
+		testEvent(
+			6,
+			time.Time{},
+			protocol.ActionBench,
+			"bench",
+			"BenchmarkGroup/case",
+			"",
+			nil,
+			"",
+		),
+		testEvent(7, time.Time{}, protocol.ActionPass, "bench", "", "", nil, ""),
+	}
+	for _, event := range events {
+		if err := analyzer.Add(event); err != nil {
+			t.Fatalf("Add() unexpected error: %v", err)
+		}
+	}
+
+	got := analyzer.Finalize(RunMetadata{})
+	exact := findTest(t, got.Packages[0], "BenchmarkGroup/case-4", 1)
+	base := findTest(t, got.Packages[0], "BenchmarkGroup/case", 1)
+	if exact.Status != StatusBenchmarked ||
+		len(exact.Output) != 1 ||
+		base.Status != StatusBenchmarked ||
+		len(base.Output) != 0 ||
+		got.Summary.Tests.Benchmarked != 2 ||
+		got.Summary.Tests.Incomplete != 0 {
+		t.Fatalf("exact and base benchmark results = %#v", got)
+	}
+}
+
+func TestAnalyzerTerminalBenchPreservesMatchingPartialResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		run        string
+		outputTest string
+		result     string
+		terminal   string
+	}{
+		{
+			name:       "test scoped result",
+			run:        "BenchmarkScoped",
+			outputTest: "BenchmarkScoped",
+			result:     "BenchmarkScoped-8 \t",
+			terminal:   "BenchmarkScoped",
+		},
+		{
+			name:     "CPU suffix falls back to base",
+			run:      "BenchmarkCPU",
+			result:   "BenchmarkCPU-8 \t",
+			terminal: "BenchmarkCPU-8",
+		},
+		{
+			name:     "exact numeric subbenchmark",
+			run:      "BenchmarkGroup/case-4",
+			result:   "BenchmarkGroup/case-4 \t",
+			terminal: "BenchmarkGroup/case-4",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer := New()
+			events := []protocol.Event{
+				testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+				testEvent(
+					2,
+					time.Time{},
+					protocol.ActionRun,
+					"bench",
+					test.run,
+					"",
+					nil,
+					"",
+				),
+				testEvent(
+					3,
+					time.Time{},
+					protocol.ActionOutput,
+					"bench",
+					test.outputTest,
+					test.result,
+					nil,
+					"",
+				),
+				testEvent(
+					4,
+					time.Time{},
+					protocol.ActionBench,
+					"bench",
+					test.terminal,
+					"",
+					nil,
+					"",
+				),
+				testEvent(5, time.Time{}, protocol.ActionPass, "bench", "", "", nil, ""),
+			}
+			for _, event := range events {
+				if err := analyzer.Add(event); err != nil {
+					t.Fatalf("Add() unexpected error: %v", err)
+				}
+			}
+
+			got := analyzer.Finalize(RunMetadata{})
+			if len(got.Packages) != 1 || len(got.Packages[0].Tests) != 1 {
+				t.Fatalf("matching terminal occurrences = %#v", got)
+			}
+			benchmark := findTest(t, got.Packages[0], test.run, 1)
+			if benchmark.Status != StatusBenchmarked ||
+				len(benchmark.Output) != 1 ||
+				benchmark.Output[0].Text != test.result ||
+				got.Summary.Tests.Benchmarked != 1 ||
+				got.Summary.Tests.Incomplete != 0 {
+				t.Fatalf("matching terminal result = %#v", got)
+			}
+		})
+	}
+}
+
+func TestAnalyzerMismatchedTerminalBenchDoesNotRescuePartialResult(t *testing.T) {
+	analyzer := New()
+	events := []protocol.Event{
+		testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+		testEvent(
+			2,
+			time.Time{},
+			protocol.ActionRun,
+			"bench",
+			"BenchmarkPending",
+			"",
+			nil,
+			"",
+		),
+		testEvent(
+			3,
+			time.Time{},
+			protocol.ActionOutput,
+			"bench",
+			"",
+			"BenchmarkPending-8 \t",
+			nil,
+			"",
+		),
+		testEvent(
+			4,
+			time.Time{},
+			protocol.ActionBench,
+			"bench",
+			"BenchmarkOther-8",
+			"",
+			nil,
+			"",
+		),
+		testEvent(5, time.Time{}, protocol.ActionPass, "bench", "", "", nil, ""),
+	}
+	for _, event := range events {
+		if err := analyzer.Add(event); err != nil {
+			t.Fatalf("Add() unexpected error: %v", err)
+		}
+	}
+
+	got := analyzer.Finalize(RunMetadata{})
+	pending := findTest(t, got.Packages[0], "BenchmarkPending", 1)
+	other := findTest(t, got.Packages[0], "BenchmarkOther-8", 1)
+	if pending.Status != StatusIncomplete ||
+		other.Status != StatusIncomplete ||
+		got.Summary.Tests.Benchmarked != 0 ||
+		got.Summary.Tests.Incomplete != 2 {
+		t.Fatalf("mismatched terminal benchmark result = %#v", got)
+	}
+}
+
+func TestAnalyzerBenchmarkResultPrecedesLoggedTerminalEvent(t *testing.T) {
+	tests := []struct {
+		name   string
+		output []string
+	}{
+		{
+			name:   "complete result",
+			output: []string{"BenchmarkLogged-8 1 9 ns/op\n"},
+		},
+		{
+			name:   "fragmented result",
+			output: []string{"BenchmarkLogged-8 \t", "1\n"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer := New()
+			events := []protocol.Event{
+				testEvent(
+					1,
+					time.Time{},
+					protocol.ActionStart,
+					"bench",
+					"",
+					"",
+					nil,
+					"",
+				),
+			}
+			for _, output := range test.output {
+				events = append(events, testEvent(
+					uint64(len(events)+1),
+					time.Time{},
+					protocol.ActionOutput,
+					"bench",
+					"",
+					output,
+					nil,
+					"",
+				))
+			}
+			events = append(
+				events,
+				testEvent(
+					uint64(len(events)+1),
+					time.Time{},
+					protocol.ActionOutput,
+					"bench",
+					"BenchmarkLogged-8",
+					"--- BENCH: BenchmarkLogged-8\n",
+					nil,
+					"",
+				),
+				testEvent(
+					uint64(len(events)+2),
+					time.Time{},
+					protocol.ActionOutput,
+					"bench",
+					"BenchmarkLogged-8",
+					"\tlogged output\n",
+					nil,
+					"",
+				),
+				testEvent(
+					uint64(len(events)+3),
+					time.Time{},
+					protocol.ActionBench,
+					"bench",
+					"BenchmarkLogged-8",
+					"",
+					nil,
+					"",
+				),
+				testEvent(
+					uint64(len(events)+4),
+					time.Time{},
+					protocol.ActionPass,
+					"bench",
+					"",
+					"",
+					nil,
+					"",
+				),
+			)
+			for _, event := range events {
+				if err := analyzer.Add(event); err != nil {
+					t.Fatalf("Add() unexpected error: %v", err)
+				}
+			}
+
+			got := analyzer.Finalize(RunMetadata{})
+			if len(got.Packages) != 1 || len(got.Packages[0].Tests) != 1 {
+				t.Fatalf("logged benchmark occurrences = %#v", got)
+			}
+			benchmark := findTest(
+				t,
+				got.Packages[0],
+				"BenchmarkLogged-8",
+				1,
+			)
+			if benchmark.Status != StatusBenchmarked ||
+				benchmark.Kind != TestKindBenchmark ||
+				len(benchmark.Output) != len(test.output)+2 ||
+				benchmark.LastSequence != uint64(len(events)-1) ||
+				got.Summary.Tests.Benchmarked != 1 ||
+				got.Summary.Tests.Incomplete != 0 ||
+				got.DiagnosticCount != 0 {
+				t.Fatalf("logged benchmark result = %#v", got)
+			}
+		})
+	}
+}
+
+func TestAnalyzerBenchmarkReportWithoutRunAcceptsTerminalAction(t *testing.T) {
+	tests := []struct {
+		name            string
+		report          string
+		action          string
+		packageAction   string
+		wantStatus      Status
+		wantBenchmarked uint64
+		wantFailed      uint64
+		wantSkipped     uint64
+	}{
+		{
+			name:          "failed benchmark",
+			report:        "--- FAIL: BenchmarkReported\n",
+			action:        protocol.ActionFail,
+			packageAction: protocol.ActionFail,
+			wantStatus:    StatusFailed,
+			wantFailed:    1,
+		},
+		{
+			name:          "skipped benchmark",
+			report:        "--- SKIP: BenchmarkReported\n",
+			action:        protocol.ActionSkip,
+			packageAction: protocol.ActionPass,
+			wantStatus:    StatusSkipped,
+			wantSkipped:   1,
+		},
+		{
+			name:            "successful logged benchmark",
+			report:          "--- BENCH: BenchmarkReported\n",
+			action:          protocol.ActionBench,
+			packageAction:   protocol.ActionPass,
+			wantStatus:      StatusBenchmarked,
+			wantBenchmarked: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer := New()
+			events := []protocol.Event{
+				testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+				testEvent(
+					2,
+					time.Time{},
+					protocol.ActionOutput,
+					"bench",
+					"BenchmarkReported",
+					test.report,
+					nil,
+					"",
+				),
+				testEvent(
+					3,
+					time.Time{},
+					protocol.ActionOutput,
+					"bench",
+					"BenchmarkReported",
+					"\tlogged output\n",
+					nil,
+					"",
+				),
+				testEvent(
+					4,
+					time.Time{},
+					test.action,
+					"bench",
+					"BenchmarkReported",
+					"",
+					nil,
+					"",
+				),
+				testEvent(
+					5,
+					time.Time{},
+					test.packageAction,
+					"bench",
+					"",
+					"",
+					nil,
+					"",
+				),
+			}
+			for _, event := range events {
+				if err := analyzer.Add(event); err != nil {
+					t.Fatalf("Add() unexpected error: %v", err)
+				}
+			}
+
+			got := analyzer.Finalize(RunMetadata{})
+			benchmark := findTest(
+				t,
+				got.Packages[0],
+				"BenchmarkReported",
+				1,
+			)
+			if benchmark.Status != test.wantStatus ||
+				benchmark.Kind != TestKindBenchmark ||
+				len(benchmark.Output) != 2 ||
+				got.Summary.Tests.Benchmarked != test.wantBenchmarked ||
+				got.Summary.Tests.Failed != test.wantFailed ||
+				got.Summary.Tests.Skipped != test.wantSkipped ||
+				got.Summary.Tests.Incomplete != 0 ||
+				got.IntegrityDiagnosticCount != 0 {
+				t.Fatalf("benchmark report result = %#v", got)
+			}
+		})
+	}
+}
+
+func TestAnalyzerBenchmarkEvidenceTerminalExceptionIsNarrow(t *testing.T) {
+	tests := []struct {
+		name       string
+		testName   string
+		output     string
+		action     string
+		wantReason string
+	}{
+		{
+			name:       "benchmark fail without output",
+			testName:   "BenchmarkNoOutput",
+			action:     protocol.ActionFail,
+			wantReason: "orphan fail",
+		},
+		{
+			name:       "ordinary test output without run",
+			testName:   "TestNoRun",
+			output:     "test output\n",
+			action:     protocol.ActionFail,
+			wantReason: "invalid fail",
+		},
+		{
+			name:       "benchmark pass is not a report terminal",
+			testName:   "BenchmarkPass",
+			output:     "benchmark output\n",
+			action:     protocol.ActionPass,
+			wantReason: "invalid pass",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer := New()
+			events := []protocol.Event{
+				testEvent(1, time.Time{}, protocol.ActionStart, "p", "", "", nil, ""),
+			}
+			if test.output != "" {
+				events = append(events, testEvent(
+					2,
+					time.Time{},
+					protocol.ActionOutput,
+					"p",
+					test.testName,
+					test.output,
+					nil,
+					"",
+				))
+			}
+			events = append(events, testEvent(
+				uint64(len(events)+1),
+				time.Time{},
+				test.action,
+				"p",
+				test.testName,
+				"",
+				nil,
+				"",
+			))
+			for _, event := range events {
+				if err := analyzer.Add(event); err != nil {
+					t.Fatalf("Add() unexpected error: %v", err)
+				}
+			}
+
+			got := analyzer.Finalize(RunMetadata{})
+			occurrence := findTest(t, got.Packages[0], test.testName, 1)
+			if occurrence.Status != StatusIncomplete ||
+				!strings.Contains(
+					occurrence.IncompleteReason,
+					test.wantReason,
+				) ||
+				got.Summary.Tests.Incomplete != 1 ||
+				got.IntegrityDiagnosticCount != 1 {
+				t.Fatalf("narrow terminal exception result = %#v", got)
+			}
+		})
+	}
+}
+
+func TestAnalyzerRejectsDuplicateBenchmarkTerminalEvent(t *testing.T) {
+	analyzer := New()
+	events := []protocol.Event{
+		testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+		testEvent(
+			2,
+			time.Time{},
+			protocol.ActionOutput,
+			"bench",
+			"",
+			"BenchmarkDuplicate-8 1 9 ns/op\n",
+			nil,
+			"",
+		),
+		testEvent(
+			3,
+			time.Time{},
+			protocol.ActionBench,
+			"bench",
+			"BenchmarkDuplicate-8",
+			"",
+			nil,
+			"",
+		),
+		testEvent(
+			4,
+			time.Time{},
+			protocol.ActionBench,
+			"bench",
+			"BenchmarkDuplicate-8",
+			"",
+			nil,
+			"",
+		),
+		testEvent(5, time.Time{}, protocol.ActionPass, "bench", "", "", nil, ""),
+	}
+	for _, event := range events {
+		if err := analyzer.Add(event); err != nil {
+			t.Fatalf("Add() unexpected error: %v", err)
+		}
+	}
+
+	got := analyzer.Finalize(RunMetadata{})
+	benchmark := findTest(t, got.Packages[0], "BenchmarkDuplicate-8", 1)
+	if benchmark.Status != StatusIncomplete ||
+		got.Summary.Tests.Benchmarked != 0 ||
+		got.Summary.Tests.Incomplete != 1 ||
+		got.IntegrityDiagnosticCount != 1 {
+		t.Fatalf("duplicate terminal benchmark result = %#v", got)
+	}
+}
+
 func TestAnalyzerMalformedRecordBreaksBenchmarkAssembly(t *testing.T) {
 	analyzer := New()
 	if err := analyzer.Add(testEvent(
@@ -1418,6 +2168,107 @@ func TestAnalyzerMalformedRecordBreaksBenchmarkAssembly(t *testing.T) {
 		got.Diagnostics[0].Kind != protocol.DiagnosticMalformed ||
 		got.Summary.Tests.Benchmarked != 0 {
 		t.Fatalf("diagnostic boundary result = %#v", got)
+	}
+}
+
+func TestAnalyzerUnverifiableEventBreaksBenchmarkAssembly(t *testing.T) {
+	tests := []struct {
+		name  string
+		event protocol.Event
+	}{
+		{
+			name: "nil test payload",
+			event: protocol.Event{
+				Sequence: 3,
+				Kind:     protocol.EventKindTest,
+			},
+		},
+		{
+			name: "nil build payload",
+			event: protocol.Event{
+				Sequence: 3,
+				Kind:     protocol.EventKindBuild,
+			},
+		},
+		{
+			name: "unknown event",
+			event: protocol.Event{
+				Sequence: 3,
+				Kind:     protocol.EventKindUnknown,
+				Unknown: &protocol.UnknownEvent{
+					Action: "future",
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			analyzer := New()
+			events := []protocol.Event{
+				testEvent(1, time.Time{}, protocol.ActionStart, "bench", "", "", nil, ""),
+				testEvent(2, time.Time{}, protocol.ActionOutput, "bench", "", "BenchmarkBroken \t", nil, ""),
+				test.event,
+				testEvent(4, time.Time{}, protocol.ActionOutput, "bench", "", "1\n", nil, ""),
+				testEvent(5, time.Time{}, protocol.ActionPass, "bench", "", "", nil, ""),
+			}
+			for _, event := range events {
+				if err := analyzer.Add(event); err != nil {
+					t.Fatalf("Add() unexpected error: %v", err)
+				}
+			}
+
+			got := analyzer.Finalize(RunMetadata{})
+			benchmark := findTest(t, got.Packages[0], "BenchmarkBroken", 1)
+			if benchmark.Status != StatusIncomplete ||
+				len(benchmark.Output) != 1 ||
+				benchmark.Output[0].Text != "BenchmarkBroken \t" ||
+				len(got.Packages[0].Output) != 1 ||
+				got.Packages[0].Output[0].Text != "1\n" ||
+				got.Summary.Tests.Benchmarked != 0 {
+				t.Fatalf("unverifiable event boundary = %#v", got)
+			}
+		})
+	}
+}
+
+func TestAnalyzerUnknownStreamRecordBreaksBenchmarkAssembly(t *testing.T) {
+	input := strings.Join([]string{
+		`{"Action":"start","Package":"bench"}`,
+		`{"Action":"output","Package":"bench","Output":"BenchmarkBroken \t"}`,
+		`{"Action":"future","Package":"bench","Future":true}`,
+		`{"Action":"output","Package":"bench","Output":"1\n"}`,
+		`{"Action":"pass","Package":"bench"}`,
+	}, "\n")
+	analyzer := New()
+	streamSummary, err := protocol.Read(
+		strings.NewReader(input),
+		protocol.StreamOptions{
+			Handler: func(record protocol.Record) {
+				if err := analyzer.AddRecord(record); err != nil {
+					t.Errorf("AddRecord() unexpected error: %v", err)
+				}
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("Read() unexpected error: %v", err)
+	}
+
+	got := analyzer.Finalize(RunMetadata{})
+	benchmark := findTest(t, got.Packages[0], "BenchmarkBroken", 1)
+	if benchmark.Status != StatusIncomplete ||
+		len(benchmark.Output) != 1 ||
+		len(got.Packages[0].Output) != 1 ||
+		got.Packages[0].Output[0].Text != "1\n" ||
+		streamSummary.UnknownRecords != 1 ||
+		streamSummary.DiagnosticCount != 1 ||
+		got.DiagnosticCount != 1 ||
+		got.Summary.UnknownActions != 1 {
+		t.Fatalf(
+			"unknown stream boundary = summary %#v, result %#v",
+			streamSummary,
+			got,
+		)
 	}
 }
 
