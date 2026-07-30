@@ -125,6 +125,15 @@ new tool to test itself. A suitable job order is:
    failure, with access and retention appropriate for potentially sensitive raw
    evidence.
 
+In the Go 1.26 conformance job, name the root bundle
+`tested-go-1.26-coverage-YYYYMMDD-HHMMSS`, with `tested` as the literal
+repository prefix and the suffix as the UTC upload timestamp. Produce the name
+in an `always()` Bash step immediately before the final `always()` upload,
+write it to `$GITHUB_OUTPUT`, and consume that step output as the artifact
+name. Upload the complete hidden `.coverage/` directory instead of enumerating
+its current files so future managed derivatives remain available as diagnostic
+evidence.
+
 Add operating systems to the matrix when they exercise distinct process-tree
 behavior. Do not mark Windows, Darwin, or Linux cancellation supported solely
 because it cross-compiles; run platform-specific lifecycle tests on each

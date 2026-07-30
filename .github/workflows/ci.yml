@@ -135,11 +135,21 @@ jobs:
       - name: Validate repository skill metadata and route graph
         run: make skills-check
 
+      - name: Name root coverage bundle
+        id: coverage_artifact
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          timestamp="$(date -u +%Y%m%d-%H%M%S)"
+          printf 'name=tested-go-1.26-coverage-%s\n' "$timestamp" \
+            >> "$GITHUB_OUTPUT"
+
       - name: Upload root coverage bundle
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: go-1.26-coverage
+          name: ${{ steps.coverage_artifact.outputs.name }}
           path: .coverage/
           if-no-files-found: warn
           retention-days: 7
