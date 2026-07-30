@@ -29,6 +29,13 @@ building blocks, wrapped errors, and focused table-driven tests.
   whole pages in Go raw-string literals.
 - Avoid import cycles and convenience packages that mix unrelated ownership.
   Move a shared primitive only when its ownership is genuinely cross-domain.
+- Keep repository-wide serialization-tag policy and the exported-struct census
+  in `internal/tag`. Register every new exported production struct: validate
+  canonical snake_case names for each supported format, or record a concise
+  exemption reason for runtime-only, custom-decoded, or format-specific types.
+  Avoid custom-build-tag-only exported structs; a platform-only exported type
+  requires a matching platform-specific compliance registry entry and native
+  CI coverage.
 
 ## Design types around behavior
 

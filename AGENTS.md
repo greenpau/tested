@@ -139,6 +139,7 @@ run even when framing, aggregation, coverage, or report generation fails.
 | `pkg/report/` | Render live console plus HTML, JSON, JUnit, and index projections; own embedded HTML/CSS/JS assets, the fixed visual layer, coverage decorator, escaping, and redaction. |
 | `pkg/artifact/` | Enforce managed paths and permissions, stage atomic publications, hash artifacts, and commit the manifest. |
 | `pkg/runstatus/` | Validate durable child outcome metadata and raw-evidence bindings used by offline reporting. |
+| `internal/tag/` | Enforce serialization-tag policy and require an explicit classification for every exported production struct. |
 | `.codex/skills/` | Store this routed engineering handbook as sibling skills. |
 
 Keep dependencies directed from `pkg/app` into focused owners. Let `pkg/report`
