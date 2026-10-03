@@ -16,6 +16,17 @@
    signal termination, start failure, wait failure, and cancellation as
    distinct evidence.
 
+Keep live presentation errors separate from raw-write errors. Write stderr
+bytes first, then display only captured bytes; propagate raw short writes,
+but latch one console error and continue draining both streams after display
+failure. Own and join the app's status worker on every return path, including
+early setup failures. Retain bounded previews without truncating raw evidence.
+
+Use a time-bounded subprocess handshake to prove progress arrives before child
+completion and after raw capture. Check a real quiet-period heartbeat, safe
+concurrent stdout/stderr display, cancellation, and the worker's completion.
+See [live orchestration tests](../../../../pkg/app/progress_test.go).
+
 ## Cancel the complete process tree
 
 Give the child a process-group or platform-equivalent ownership boundary. On

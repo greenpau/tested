@@ -35,10 +35,11 @@ func executeRun(
 	layout *artifact.Layout,
 	renderer *report.Renderer,
 	console *report.Console,
-) executionOutcome {
-	var outcome executionOutcome
+) (outcome executionOutcome) {
+	progress := startLiveProgress(console, !options.Quiet && options.Format != cli.FormatJSON)
+	defer progress.finish(&outcome, layout)
 	var analysisErrors errorSet
-	var liveConsoleErrors errorSet
+	progress.stage("Preparing test artifacts")
 	captureComplete := true
 	if err := layout.PrepareRun(); err != nil {
 		outcome.errors.add(err)
@@ -97,15 +98,12 @@ func executeRun(
 		MaxRecordBytes:       int(options.MaximumEventBytes),
 		UnlimitedRecordBytes: options.MaximumEventBytes == 0,
 		Handler: func(record protocol.Record) {
-			if addErr := analyzer.AddRecord(record); addErr != nil {
+			update, addErr := analyzer.AddRecordWithProgress(record)
+			if addErr != nil {
 				analysisErrors.add(fmt.Errorf("analyze event record: %w", addErr))
 				return
 			}
-			if !options.Quiet && options.Format != cli.FormatJSON {
-				if pkg, ok := terminalPackage(analyzer, record); ok {
-					liveConsoleErrors.add(console.Package(pkg))
-				}
-			}
+			progress.event(update)
 		},
 	})
 
@@ -113,19 +111,21 @@ func executeRun(
 	if !options.NoCoverage {
 		coveragePath = layout.CoverageProfile
 	}
+	progress.stage("Running Go tests (including build and dependency setup)")
 	runResult, runErr := runner.New().Run(ctx, runner.Options{
 		GoCommand:       options.GoBinary,
 		WorkDir:         layout.WorkDir,
 		TestArguments:   options.GoTestArgs,
 		CoverageProfile: coveragePath,
 		StandardOutput:  stream,
-		StandardError:   stderrFile,
+		StandardError:   &progressCapture{raw: stderrFile, progress: progress},
 	})
 	if runErr != nil {
 		outcome.errors.add(runErr)
 		outcome.state.InfrastructureErr = true
 		captureComplete = false
 	}
+	progress.stage("Finalizing captured test evidence")
 	streamSummary, streamErr := stream.Finish()
 	if streamErr != nil {
 		outcome.errors.add(fmt.Errorf("finish test event stream: %w", streamErr))
@@ -181,6 +181,9 @@ func executeRun(
 	outcome.state.EvidenceFailed = resultFailed(snapshot)
 	outcome.state.EvidenceIncomplete = resultIncomplete(snapshot)
 
+	if !options.NoCoverage {
+		progress.stage("Loading coverage and evaluating policy")
+	}
 	profile, coverageSnapshotPath, profileErr := loadLiveCoverage(
 		options,
 		layout,
@@ -261,6 +264,7 @@ func executeRun(
 	applyRunResultOutcome(&snapshot, &outcome.state, runResult)
 	durableRunErrors := outcome.errors.clone()
 
+	progress.stage("Binding child status to captured evidence")
 	statusWritten := false
 	if statusErr := persistRunStatus(
 		layout,
@@ -277,10 +281,6 @@ func executeRun(
 		statusWritten = true
 	}
 
-	if liveConsoleErrors.count() > 0 {
-		appendErrors(&outcome.errors, &liveConsoleErrors)
-		outcome.state.ReportErr = true
-	}
 	if !options.NoCoverage && profile != nil {
 		if coverageReportErr := publishCoverageReport(
 			ctx,
@@ -290,12 +290,14 @@ func executeRun(
 			coverageSnapshotPath,
 			profile,
 			options.CoverageDiffBase,
+			progress,
 		); coverageReportErr != nil {
 			outcome.errors.add(coverageReportErr)
 			outcome.state.ReportErr = true
 		}
 	}
 
+	progress.collectError(&outcome)
 	assessment := buildReportAssessment(
 		snapshot,
 		outcome.state,
@@ -322,6 +324,7 @@ func executeRun(
 		!evidenceContradictsChild &&
 		!outcome.state.ReportErr
 	refreshReports := func() {
+		progress.stage("Refreshing reports after an error or cancellation")
 		assessment = buildReportAssessment(
 			snapshot,
 			outcome.state,
@@ -348,11 +351,13 @@ func executeRun(
 			input.Assessment = assessment
 		}
 	}
+	progress.repair = refreshReports
 	if reportErrors := publishReports(
 		ctx,
 		layout,
 		renderer,
 		input,
+		progress,
 	); reportErrors.count() > 0 {
 		appendErrors(&outcome.errors, &reportErrors)
 		outcome.state.ReportErr = true
@@ -380,6 +385,11 @@ func executeRun(
 	}
 	if cancelledAfterPublish ||
 		(outcome.state.ReportErr && !assessment.ReportFailed) {
+		refreshReports()
+	}
+	progress.stage("Writing final summary")
+	if progress.collectError(&outcome) {
+		manifestEligible = false
 		refreshReports()
 	}
 	if err := console.Final(input); err != nil {
@@ -419,6 +429,7 @@ func executeRun(
 		!outcome.state.Interrupted &&
 		ctx.Err() == nil
 	if manifestEligible {
+		progress.stage("Hashing artifacts and publishing manifest")
 		if err := writeBoundManifest(layout); err != nil {
 			outcome.errors.add(err)
 			outcome.state.ReportErr = true
@@ -455,6 +466,7 @@ func executeRun(
 		!outcome.state.ReportErr {
 		outcome.state.InfrastructureErr = true
 	}
+	progress.stage("Finished")
 	return outcome
 }
 
@@ -514,22 +526,6 @@ func formatPolicyPercentage(
 		return "0"
 	}
 	return formatted
-}
-
-func terminalPackage(
-	analyzer *result.Analyzer,
-	record protocol.Record,
-) (result.Package, bool) {
-	if record.Event == nil || record.Event.Kind != protocol.EventKindTest ||
-		record.Event.Test == nil || record.Event.Test.Test != "" {
-		return result.Package{}, false
-	}
-	switch record.Event.Test.Action {
-	case protocol.ActionPass, protocol.ActionFail, protocol.ActionSkip:
-	default:
-		return result.Package{}, false
-	}
-	return analyzer.Package(record.Event.Test.Package)
 }
 
 func syncCloseFile(label string, file *os.File) error {

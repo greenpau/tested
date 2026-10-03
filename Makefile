@@ -81,19 +81,19 @@ linter:
 .PHONY: run-tests
 run-tests:
 	@echo "$@: started"
-	@go test $(TEST_DIR)
+	@go test -v -p 1 -count=1 $(TEST_DIR)
 	@echo "$@: complete"
 
 .PHONY: run-race-tests
 run-race-tests:
 	@echo "$@: started"
-	@go test -race $(TEST_DIR)
+	@go test -v -p 1 -race -count=1 $(TEST_DIR)
 	@echo "$@: complete"
 
 .PHONY: run-shuffle-tests
 run-shuffle-tests:
 	@echo "$@: started"
-	@go test $(TEST_DIR) -shuffle=on -count=3
+	@go test -v -p 1 -shuffle=on -count=3 $(TEST_DIR)
 	@echo "$@: complete"
 
 .PHONY: self-test

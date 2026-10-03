@@ -38,6 +38,13 @@ algorithms and verification at each boundary.
   names merely because their package and name match. Bound report-retained
   output per scope and in aggregate, normalized cardinality, and dynamically
   retained normalized strings, without truncating raw evidence.
+- Stream normalized test/package/build progress and captured log previews in
+  plain and Markdown modes, along with run/report processing stages. Keep
+  `--quiet` final-only and JSON mode a single final summary. Own a joined
+  periodic status worker in app orchestration; report the current stage,
+  elapsed time, and record count after ten seconds without displayed progress
+  (checked once per second). Suppressed detail must not postpone that status.
+  Keep offline analysis progress separate from historical test execution.
 - Compute coverage from statement weights in the profile. Never average
   package percentages, and never infer coverage from terminal text.
 - Keep `index.html`, `test_output.html`, and `coverage.html` within one compact,

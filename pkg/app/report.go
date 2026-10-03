@@ -38,8 +38,9 @@ func executeReport(
 	layout *artifact.Layout,
 	renderer *report.Renderer,
 	console *report.Console,
-) executionOutcome {
-	var outcome executionOutcome
+) (outcome executionOutcome) {
+	progress := startLiveProgress(console, !options.Quiet && options.Format != cli.FormatJSON)
+	defer progress.finish(&outcome, layout)
 	reportCommandCancelled := false
 	if err := ctx.Err(); err != nil {
 		outcome.errors.add(fmt.Errorf("report cancelled before artifact preparation: %w", err))
@@ -47,6 +48,7 @@ func executeReport(
 		return outcome
 	}
 
+	progress.stage("Validating report inputs and run metadata")
 	eventPath := resolveInputPath(layout.WorkDir, options.EventsFile)
 	if eventPath == "" {
 		eventPath = layout.TestOutputJSONL
@@ -141,6 +143,7 @@ func executeReport(
 		}
 	}
 
+	progress.stage("Preparing and importing report evidence")
 	var prepareErr error
 	if options.NoCoverage {
 		prepareErr = layout.PrepareReportWithoutCoverage()
@@ -283,6 +286,7 @@ func executeReport(
 			eventReader = eventVerifier
 		}
 	}
+	progress.stage("Reading and analyzing captured test events")
 	var analysisErrors errorSet
 	streamSummary, readErr := protocol.Read(&contextReader{
 		ctx:    ctx,
@@ -292,6 +296,7 @@ func executeReport(
 		UnlimitedRecordBytes: options.MaximumEventBytes == 0,
 		Handler: func(record protocol.Record) {
 			analysisErrors.add(analyzer.AddRecord(record))
+			progress.event(result.Progress{})
 		},
 	})
 	var eventVerifyErr error
@@ -312,6 +317,7 @@ func executeReport(
 		outcome.state.InfrastructureErr = true
 	}
 
+	progress.stage("Verifying evidence bindings and child outcome")
 	metadata := result.RunMetadata{
 		WorkDir:  layout.WorkDir,
 		ExitCode: -1,
@@ -403,6 +409,7 @@ func executeReport(
 		manifestEligible = false
 	}
 	if useCoverage {
+		progress.stage("Loading and verifying coverage evidence")
 		profile, coverageSnapshotPath, err = parseCoverageSnapshot(
 			layout,
 			profilePath,
@@ -454,12 +461,14 @@ func executeReport(
 			coverageSnapshotPath,
 			profile,
 			options.CoverageDiffBase,
+			progress,
 		); coverageReportErr != nil {
 			outcome.errors.add(coverageReportErr)
 			outcome.state.ReportErr = true
 			manifestEligible = false
 		}
 	}
+	progress.collectError(&outcome)
 	assessment := buildReportAssessment(
 		snapshot,
 		outcome.state,
@@ -473,6 +482,7 @@ func executeReport(
 		Assessment: assessment,
 	}
 	refreshReports := func() {
+		progress.stage("Refreshing reports after an error or cancellation")
 		assessment = buildReportAssessment(
 			snapshot,
 			outcome.state,
@@ -498,11 +508,13 @@ func executeReport(
 			input.Assessment = assessment
 		}
 	}
+	progress.repair = refreshReports
 	if reportErrors := publishReports(
 		ctx,
 		layout,
 		renderer,
 		input,
+		progress,
 	); reportErrors.count() > 0 {
 		appendErrors(&outcome.errors, &reportErrors)
 		outcome.state.ReportErr = true
@@ -520,6 +532,11 @@ func executeReport(
 	}
 	if reportCommandCancelled ||
 		(outcome.state.ReportErr && !assessment.ReportFailed) {
+		refreshReports()
+	}
+	progress.stage("Writing final summary")
+	if progress.collectError(&outcome) {
+		manifestEligible = false
 		refreshReports()
 	}
 	if err := console.Final(input); err != nil {
@@ -547,6 +564,7 @@ func executeReport(
 		!outcome.state.Interrupted &&
 		ctx.Err() == nil
 	if manifestEligible {
+		progress.stage("Hashing artifacts and publishing manifest")
 		if err := writeBoundManifest(layout); err != nil {
 			outcome.errors.add(err)
 			outcome.state.ReportErr = true
@@ -572,6 +590,7 @@ func executeReport(
 			outcome.state.InfrastructureErr = true
 		}
 	}
+	progress.stage("Finished")
 	return outcome
 }
 
@@ -604,27 +623,32 @@ func publishReports(
 	layout *artifact.Layout,
 	renderer *report.Renderer,
 	input report.Input,
+	progress *liveProgress,
 ) errorSet {
 	var reportErrors errorSet
 	if err := ctx.Err(); err != nil {
 		reportErrors.add(fmt.Errorf("publish test reports: %w", err))
 		return reportErrors
 	}
+	progress.stage("Publishing test_output.html")
 	reportErrors.add(renderer.PublishTestOutputHTML(layout, input))
 	if err := ctx.Err(); err != nil {
 		reportErrors.add(fmt.Errorf("publish test reports: %w", err))
 		return reportErrors
 	}
+	progress.stage("Publishing summary.json")
 	reportErrors.add(renderer.PublishSummaryJSON(layout, input))
 	if err := ctx.Err(); err != nil {
 		reportErrors.add(fmt.Errorf("publish test reports: %w", err))
 		return reportErrors
 	}
+	progress.stage("Publishing junit.xml")
 	reportErrors.add(renderer.PublishJUnitXML(layout, input))
 	if err := ctx.Err(); err != nil {
 		reportErrors.add(fmt.Errorf("publish test reports: %w", err))
 		return reportErrors
 	}
+	progress.stage("Publishing index.html")
 	reportErrors.add(renderer.PublishIndexHTML(layout, input))
 	return reportErrors
 }
@@ -636,7 +660,7 @@ func repairReports(
 ) errorSet {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	reportErrors := publishReports(ctx, layout, renderer, input)
+	reportErrors := publishReports(ctx, layout, renderer, input, nil)
 	if reportErrors.count() == 0 {
 		return reportErrors
 	}
@@ -665,6 +689,7 @@ func publishCoverageReport(
 	profilePath string,
 	profile *coverage.Profile,
 	coverageDiffBase string,
+	progress *liveProgress,
 ) error {
 	if renderer == nil {
 		return errors.New("publish coverage report: renderer is nil")
@@ -672,7 +697,11 @@ func publishCoverageReport(
 	if profilePath == "" {
 		profilePath = layout.CoverageProfile
 	}
-	decorate := renderer.DecorateCoverageHTML
+	progress.stage("Generating coverage.html with Go cover")
+	decorate := func(ctx context.Context, source io.Reader, destination io.Writer) error {
+		progress.stage("Decorating coverage.html")
+		return renderer.DecorateCoverageHTML(ctx, source, destination)
+	}
 	if coverageDiffBase != "" {
 		if profile == nil {
 			return errors.New(
@@ -688,6 +717,7 @@ func publishCoverageReport(
 			source io.Reader,
 			destination io.Writer,
 		) error {
+			progress.stage("Comparing coverage source with Git baseline")
 			diff, err := coverage.BuildDiff(ctx, coverage.DiffOptions{
 				ProjectDir:   layout.WorkDir,
 				GoCommand:    goCommand,
@@ -700,6 +730,7 @@ func publishCoverageReport(
 					err,
 				)
 			}
+			progress.stage("Decorating coverage.html with source comparison")
 			return renderer.DecorateCoverageHTMLWithDiff(
 				ctx,
 				source,

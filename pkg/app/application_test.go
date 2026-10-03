@@ -31,6 +31,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("TESTED_APP_PROGRESS_HELPER") != "" {
+		os.Exit(runProgressHelper())
+	}
 	if os.Getenv("TESTED_APP_HELPER_EXIT_ONE") == "1" {
 		os.Exit(1)
 	}

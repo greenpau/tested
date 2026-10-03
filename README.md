@@ -122,6 +122,15 @@ contextually escaped comparison model for genuine unified and split changes.
 A changed-files switch then limits both package and file choices to modified,
 added, renamed, and untracked covered sources.
 
+Plain and Markdown console output stream test/package transitions, test and
+build logs, child stderr, and report-generation stages. A status line appears
+after roughly 10 seconds of silence. Live details are capped at 4 MiB, with
+bounded previews; stages, heartbeats, and the final summary continue. Use
+`--quiet` for the final summary only. JSON mode remains one final document.
+With `--redact`, live log payloads are omitted to prevent secrets leaking across
+chunk boundaries; completed reports retain their normal redaction behavior.
+See [the console guide](USER_GUIDE.md#reading-the-console-summary) for limits.
+
 Live raw evidence and imported evidence copies are never silently redacted.
 Repeatable `--redact REGEXP` options apply to console output,
 `test_output.html`, `summary.json`, `junit.xml`, and `index.html`. They do not
@@ -279,7 +288,11 @@ additionally verifies the version-specific artifact-directory and BuildEvent
 records; Go 1.25 reports those assertions as explicitly skipped.
 
 `make test` first runs direct formatting, vet, unit, race, and shuffled checks
-as the bootstrap authority. It then builds the checked-out source as
+as the bootstrap authority. The three direct test stages show each test and
+subtest as it runs, with verbose output grouped by package. Packages run one
+at a time so Go streams their output immediately; unit and race checks bypass
+the result cache, and shuffled checks execute three repetitions.
+It then builds the checked-out source as
 `bin/tested` and uses that binary for one canonical `-count=1` self-test.
 The successful self-test leaves a validated ten-file `.coverage` bundle at the
 repository root. `make self-test` runs only that build-and-report stage;

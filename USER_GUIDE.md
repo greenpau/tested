@@ -45,7 +45,7 @@ Important options:
 | `--coverage-diff-base` | disabled | Compare coverage source with an explicitly selected local Git commit |
 | `--format` | `plain` | Console projection: `plain`, `markdown`, or `json` |
 | `--color` | `auto` | ANSI color policy: `auto`, `always`, or `never` |
-| `--quiet` | disabled | Suppress live package completion lines |
+| `--quiet` | disabled | Suppress all live progress, logs, and heartbeats |
 | `--slowest` | `10` | Number of slow occurrences in the final summary |
 | `--max-event-bytes` | 16 MiB | Largest JSON record and aggregate fragmented benchmark line assembled in memory; `0` disables the byte limit |
 | `--max-test-output-bytes` | 1 MiB | Output retained per normalized scope; `0` is unlimited |
@@ -283,10 +283,41 @@ incomplete evidence.
 
 ## Reading the console summary
 
-Live package lines provide status, elapsed time, and named occurrence counts.
+Plain and Markdown output stream package and test lifecycle events as they
+arrive, including subtests, repeated occurrences, pause/resume, and completion.
+Package completion lines include elapsed time and occurrence counts. Test and
+build log text and child stderr appear with scope prefixes; terminal controls
+and Markdown syntax are escaped. Go controls when it emits events and logs:
+while it is silent, tested reports the current stage, elapsed time, and number
+of event records after roughly 10 seconds without displayed progress. The
+heartbeat is checked once per second and repeats during continued inactivity.
+
+Stages also cover artifact preparation, evidence finalization and verification,
+coverage processing, optional Git comparison, each report publication, and
+manifest hashing. Offline `tested report` shows its own processing stages and
+record count, without replaying historical tests as live execution.
+
+Live details have a separate 4 MiB budget. Each displayed line is bounded to
+4 KiB; log previews inspect at most 16 KiB per event or stderr read and bound
+formatted expansion. A notice marks omitted detail. Stage messages, periodic
+status, and the final summary continue after the detail budget fills. The
+configured result-retention limits also apply to event log previews. Raw
+`test_output.jsonl` and `stderr.log` remain complete; live prefixes, wrapping,
+and truncation never change those files.
+
+Use `--quiet` to keep only the final summary. `--format json` continues to emit
+exactly one final JSON summary, with no interleaved progress or log text.
+When `--redact` is configured, live log payloads are omitted with a notice:
+arbitrary regular expressions can span event or read boundaries, so redacting
+individual fragments would risk exposing partial secrets. Lifecycle identities
+and stage messages still use configured redaction; completed test/build report
+transcripts use the normal redaction rules.
+
 The final summary reports child exit, cancellation cause and projected shell
 exit, run-level integrity issues, failures, weighted global coverage, and the
-slow-test list in deterministic order.
+slow-test list in deterministic order. A console write failure is a report
+failure: raw capture continues, the child status remains authoritative, and no
+manifest claims a complete presentation.
 
 The global percentage comes from `coverage.out`:
 

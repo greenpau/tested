@@ -42,6 +42,15 @@ failures share a run, keep the authoritative child status and attach later
 failures to diagnostics and summary metadata. A parsed `fail` with a zero child
 exit is an integrity conflict, not permission to report success.
 
+Treat live-console failures as presentation failures, including errors during
+coverage, derivative publication, manifest hashing, or the final stage. Never
+persist those errors as fatal child/run evidence in `run.json`. Collect the
+first error, stop and join the status worker before returning, refresh report
+assessments when necessary, and remove the current generation's manifest on a
+late failure. Do not delete an existing bundle when an early input/setup
+failure has not prepared a new generation. Verify raw bytes and child exit
+precedence survive display failure and that a later offline rerender recovers.
+
 The `report` command has no new child status. Copy explicitly selected external
 event, stderr, and coverage evidence into their canonical managed names before
 analysis. Import bound same-named stderr/profile siblings from an explicitly

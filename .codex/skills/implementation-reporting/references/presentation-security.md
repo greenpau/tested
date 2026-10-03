@@ -11,12 +11,38 @@ same semantic updates and final snapshot. Apply `--quiet`, `--color`, and
   enabled.
 - Escape Markdown metacharacters and structural boundaries so child output
   cannot create deceptive headings, links, or code blocks.
-- Emit valid complete JSON values or documented JSON records. Never mix prose
-  or ANSI bytes into JSON mode.
+- Keep JSON mode exactly one complete final summary. Suppress all live events,
+  logs, stages, and heartbeats in JSON mode and under `--quiet`; quiet still
+  renders the final summary.
 - Keep live output useful under partial input, but label provisional state and
   replace it only with evidence-backed terminal state.
 - Sort final summaries and slowest lists with deterministic tie-breakers that
   include package, test name, and occurrence ordinal.
+
+Stream normalized lifecycle updates with full test names and occurrence
+ordinals, package completion counts, duration quality, metadata notifications,
+and diagnostic counts. Redact identities as separate fields before composing
+scope prefixes or occurrence labels, preserving anchored regex behavior. Do not
+apply the rules again to composed text or redaction omission markers. Show
+retained test/build/unattributed log chunks and
+already captured stderr with safe scope prefixes. Escape HTML delimiters as
+well as Markdown syntax in live Markdown logs. Do not copy accumulated
+transcripts for each event or infer test states in the renderer.
+
+Bound live details independently from evidence: a 4 MiB transcript budget,
+4 KiB display lines, and at most a 16 KiB input preview per log event/read.
+Stop formatting a multiline preview once it reaches 64 KiB, allowing only the
+last bounded line and truncation notice beyond that threshold. Emit explicit
+omission notices. Continue fixed orchestration stages, periodic status, and
+the final summary after detail exhaustion. Honor normalized output clipping
+without marking that presentation limit as semantic failure.
+
+When any redaction rule is configured, omit live log payloads with one notice.
+Arbitrary regexes can cross event, line, and stderr-read boundaries; applying
+rules independently to chunks cannot safely hide partial matches. Continue
+redacted lifecycle/stage output and normal completed-report redaction. Keep
+raw bytes unchanged. Treat short console writes as errors even if a writer
+returns no error.
 
 ## Escape and redact
 
@@ -92,6 +118,7 @@ these boundaries.
 ## Verification entrypoints
 
 Inspect [console tests](../../../../pkg/report/console_test.go),
+[live stream tests](../../../../pkg/report/progress_test.go),
 [redaction tests](../../../../pkg/report/redaction_test.go),
 [format security tests](../../../../pkg/report/report_test.go), and
 [fuzz inputs](../../../../pkg/report/fuzz_test.go). Check the resulting

@@ -106,6 +106,23 @@ or skip, and do not omit it from machine reports.
 Return immutable, deterministically sorted snapshots. Keep analyzer mutation
 private so renderers cannot change aggregation state.
 
+## Project incremental progress
+
+Expose a transient normalized update when consuming a record atomically.
+Reuse the same aggregation path as ordinary record ingestion; return only the
+current retained output chunk, its original byte count and clipping flag,
+normalized identity/status/duration, and newly observed diagnostic count.
+Preserve inferred benchmark attribution and distinct repetition ordinals.
+Return detached occurrence identities and terminal package counts. Avoid
+copying or sorting the accumulated result on every event, and clear transient
+references after the call. Keep this runtime projection out of serialization
+schemas and register its exported struct exemption.
+
+Compare final evidence from ordinary and progress-enabled ingestion under
+output, entry, and identity budgets. Verify fragmented benchmark output stays
+attached to the same occurrence and that invalid transitions never become
+successful progress. Inspect [progress normalization and tests](../../../../pkg/result/progress_test.go).
+
 ## Represent time honestly
 
 Prefer a valid terminal event `Elapsed` value as the measured duration for that

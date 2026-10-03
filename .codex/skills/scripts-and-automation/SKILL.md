@@ -24,9 +24,9 @@ The current Make surface is:
 | --- | --- |
 | `make skills-check` | Check handbook metadata and the canonical route graph. |
 | `make linter` | Check Go formatting and run vet; do not rewrite source. |
-| `make run-tests` | Run direct package tests. |
-| `make run-race-tests` | Run race-enabled package tests. |
-| `make run-shuffle-tests` | Run three shuffled repetitions. |
+| `make run-tests` | Run uncached, verbose tests, one package at a time. |
+| `make run-race-tests` | Run uncached, verbose race tests, one package at a time. |
+| `make run-shuffle-tests` | Run three verbose shuffled repetitions, one package at a time. |
 | `make build` | Replace `bin/tested`, stamp version metadata, check version/help. |
 | `make self-test` | Build, replace root `.coverage`, run with coverage and explicit `HEAD` baseline, then validate its bundle. |
 | `make test` / `make coverage` | Run bootstrap checks followed by one canonical self-test. |

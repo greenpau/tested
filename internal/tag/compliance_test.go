@@ -184,6 +184,7 @@ var complianceRegistry = []registryEntry{
 		"console renderer state is not serialized",
 	),
 
+	exempt(&result.Progress{}, "transient live progress is not a serialization schema"),
 	jsonSchema(&result.OccurrenceID{}),
 	jsonSchema(&result.Signals{}),
 	jsonSchema(&result.Output{}),

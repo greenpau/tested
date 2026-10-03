@@ -72,6 +72,9 @@ type AnalyzerOptions struct {
 type Analyzer struct {
 	mu sync.Mutex
 
+	collectProgress bool
+	progressOutput  Output
+
 	maxOutputBytes       int64
 	maxTotalOutputBytes  int64
 	maxResultEntries     int64
@@ -260,6 +263,11 @@ func (a *Analyzer) AddRecord(record protocol.Record) error {
 	if a.finalized {
 		return ErrFinalized
 	}
+	a.addRecordLocked(record)
+	return nil
+}
+
+func (a *Analyzer) addRecordLocked(record protocol.Record) {
 	a.observeSequence(record.Sequence)
 	unknownDiagnosed := false
 	if record.Diagnostic != nil {
@@ -281,7 +289,6 @@ func (a *Analyzer) AddRecord(record protocol.Record) error {
 		}
 		a.addEvent(event, unknownDiagnosed)
 	}
-	return nil
 }
 
 // Finalize turns every started nonterminal package and test occurrence into an
@@ -2175,6 +2182,10 @@ func (a *Analyzer) appendOutput(
 	}
 	identityBytes := outputStringBytes(output)
 	output.OriginalBytes = originalBytes
+	if a.collectProgress {
+		a.progressOutput = output
+		a.progressOutput.Text = ""
+	}
 	*totalBytes = saturatingAddInt64(*totalBytes, originalBytes)
 	a.totalOutputBytes = saturatingAddInt64(
 		a.totalOutputBytes,
@@ -2240,6 +2251,9 @@ func (a *Analyzer) appendOutput(
 		return
 	}
 	output.Text = output.Text[:retain]
+	if a.collectProgress {
+		a.progressOutput.Text = output.Text
+	}
 	*retainedBytes = saturatingAddInt64(*retainedBytes, int64(retain))
 	a.totalOutputRetainedBytes = saturatingAddInt64(
 		a.totalOutputRetainedBytes,

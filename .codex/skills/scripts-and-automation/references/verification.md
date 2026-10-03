@@ -13,9 +13,25 @@ go vet ./...
 go build ./...
 ```
 
+Preserve the normal inherited environment when qualifying the suite. Some
+POSIX permission fixtures currently assume an ordinary `022` creation mask;
+changing the command's umask to `077` makes those fixtures fail before their
+intended assertion. Secure external verification logs by pre-creating the log
+files with `0600`, rather than changing the child tests' creation mask. Inspect
+[permission fixtures](../../../../pkg/artifact/layout_test.go) before claiming
+qualification under a different umask.
+
 Use a focused `-run` expression for one test and a time-bounded test context
 when exercising subprocess cancellation. Do not use `go test` pipelines that
 lose the left-hand exit status.
+
+Keep the Make bootstrap stages observable independently of `tested` itself.
+Use `-v -p 1` for direct unit, race, and shuffled checks so test/subtest names,
+logs, and outcomes stream within each package instead of waiting for package
+completion. Use `-count=1` for unit and race checks to avoid cached replay;
+retain `-shuffle=on -count=3` for shuffled checks. Preserve the selected
+`TEST_DIR` patterns and Go's within-package parallel-test behavior. Validate
+changes to these flags through the actual Make targets and their live output.
 
 Cross-build the CLI for each supported target without running the foreign
 binary. At minimum, cover Linux, Darwin, and Windows on both amd64 and arm64;

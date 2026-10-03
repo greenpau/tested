@@ -533,7 +533,7 @@ Run options:
                               embedded baseline/deleted source may be sensitive
       --format FORMAT         plain, markdown, or json (default "plain")
       --color MODE            auto, always, or never (default "auto")
-      --quiet                 suppress live package progress
+      --quiet                 suppress live progress and logs
       --slowest N             include N slowest test occurrences (default 10)
       --max-event-bytes N     maximum JSON event/assembled benchmark line size;
                               0 disables the byte limit

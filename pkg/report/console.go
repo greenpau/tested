@@ -35,7 +35,7 @@ const (
 	ConsolePlain ConsoleFormat = "plain"
 	// ConsoleMarkdown writes portable Markdown.
 	ConsoleMarkdown ConsoleFormat = "markdown"
-	// ConsoleJSON writes one complete final summary and no live package events.
+	// ConsoleJSON writes one complete final summary and no live events.
 	ConsoleJSON ConsoleFormat = "json"
 )
 
@@ -51,7 +51,7 @@ const (
 	ColorNever ColorMode = "never"
 )
 
-// ConsoleOptions configures live package and final result rendering.
+// ConsoleOptions configures live and final result rendering.
 type ConsoleOptions struct {
 	Writer                 io.Writer
 	Title                  string
@@ -65,14 +65,18 @@ type ConsoleOptions struct {
 	LookupEnv              func(string) (string, bool)
 }
 
-// Console renders concurrency-safe live package and final result output.
+// Console renders concurrency-safe live and final result output.
 type Console struct {
-	mu       sync.Mutex
-	writer   io.Writer
-	format   ConsoleFormat
-	color    bool
-	quiet    bool
-	renderer *Renderer
+	mu            sync.Mutex
+	writer        io.Writer
+	format        ConsoleFormat
+	color         bool
+	quiet         bool
+	renderer      *Renderer
+	liveBytes     int
+	liveLimited   bool
+	logsOmitted   bool
+	outputClipped bool
 }
 
 // NewConsole validates options and creates a console renderer.
@@ -784,7 +788,11 @@ func indentText(value, prefix string) string {
 }
 
 func writeConsole(writer io.Writer, value string) error {
-	if _, err := io.WriteString(writer, value); err != nil {
+	n, err := io.WriteString(writer, value)
+	if err == nil && n != len(value) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
 		return fmt.Errorf("write report console: %w", err)
 	}
 	return nil
