@@ -1,4 +1,4 @@
 interface:
   display_name: "Skill Authoring"
-  short_description: "Author routed tested repository skills"
-  default_prompt: "Use $skill-authoring to create, revise, or audit tested repository skills."
+  short_description: "Port and maintain tested skill contracts"
+  default_prompt: "Use $skill-authoring to port or audit tested skills, task routes, and source-grounded contracts."

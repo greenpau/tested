@@ -1,6 +1,6 @@
 ---
 name: coding-directives
-description: Apply tested repository Go coding standards to implementation and review work. Use when creating or modifying Go packages, APIs, process execution, protocol parsing, result models, coverage logic, renderers, artifact storage, errors, security-sensitive paths, or tests in tested.
+description: Apply tested Go design and verification conventions. Use when implementing or reviewing packages, APIs, errors, concurrency, serialization models, secure paths, or their tests.
 ---
 
 # Coding Directives
@@ -9,16 +9,26 @@ Apply `tested`'s established Go style: prefer cohesive types with methods,
 small consumer-owned interfaces, explicit package ownership, standard-library
 building blocks, wrapped errors, and focused table-driven tests.
 
+## Scope and source grounding
+
+Own implementation conventions across Go packages. Keep CLI grammar, protocol
+semantics, coverage math, report formats, and release procedures in their
+focused contracts. Start with the owning package's declarations and test
+assertions; use [serialization compliance](../../../internal/tag/compliance_test.go)
+when an exported production struct changes.
+
+For code changes, inspect the behavior boundary, implement the smallest
+cohesive change, and select verification that exercises its observable effect.
+Keep documentation-only edits scoped to metadata, links, and source truth;
+the runtime checks below apply to implementation work.
+
 ## File and package discipline
 
 - Add the repository Apache License 2.0 copyright header to every new Go source
   and test file. Match the wording and year convention already present in the
   repository.
-- Put orchestration and exit policy in `pkg/app`, command grammar in `pkg/cli`,
-  child lifecycle in `pkg/runner`, wire decoding in `pkg/protocol`, normalized
-  state in `pkg/result`, profile semantics in `pkg/coverage`, projections in
-  `pkg/report`, durable process outcome in `pkg/runstatus`, and managed
-  publication in `pkg/artifact`.
+- Follow the established package ownership; keep orchestration out of focused
+  parser, renderer, and storage types.
 - Keep `main.go` limited to process setup, app invocation, and final exit.
 - Keep exported surfaces minimal. Export a symbol only when another package
   needs the contract; keep helpers and concrete adapters unexported.
@@ -143,3 +153,14 @@ behind a package-owned boundary.
   supported operating-system and architecture matrix.
 - Treat `go vet`, race, and cross-build failures as implementation defects or
   explicitly documented platform exclusions; do not hide them in automation.
+
+## Acceptance scenarios
+
+- A new exported data model declares canonical serialization tags or an
+  explicit runtime/format exemption and passes the exported-struct census.
+- A cancellable operation owns and joins its work; errors retain inspectable
+  causes and cleanup failures that affect evidence integrity.
+- A renderer accepts hostile text without bypassing destination escaping or
+  placing untrusted strings in trusted-content types.
+- Equivalent inputs produce stable outputs; absent, measured-zero, estimated,
+  and incomplete values remain distinguishable in models and tests.

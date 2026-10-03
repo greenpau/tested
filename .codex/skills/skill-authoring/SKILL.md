@@ -1,139 +1,140 @@
 ---
 name: skill-authoring
-description: Create, revise, route, validate, or audit tested repo-local skills as a progressive-disclosure engineering handbook. Use when changing AGENTS.md or .codex/skills, adding durable tested contracts, reorganizing routes, synchronizing skill UI metadata, removing placeholders, or checking reachability and routing integrity.
+description: Create, port, revise, or audit tested repo-local skills and their engineering contracts. Use when changing skill ownership, task routes, metadata, source-grounded guidance, or durable lessons from a working session.
 ---
 
 # Skill Authoring
 
-## Inherit the default workflow
+## Inherit the default authoring workflow
 
-Read and apply the installed `$skill-creator` skill completely before changing
-a repo-local skill. Apply its naming, initialization, frontmatter, imperative
-writing, progressive disclosure, resource selection, UI metadata, validation,
-and forward-testing guidance.
+Read the installed `$skill-creator` completely before applying this skill.
+Locate it through the active skill catalog. Retain its naming, initialization,
+frontmatter, resource, metadata, validation, and behavioral testing guidance;
+add the repository requirements below without weakening those defaults.
 
-Do not initialize an existing skill again. For a new skill, use the installed
-initializer once, then replace every placeholder and remove every unused
-example or resource directory. Keep repository rules additive; do not weaken
-the default skill requirements.
+Edit existing skills in place. Initialize a new skill only when an independent
+concern has no suitable owner. Keep changes within the user's requested scope
+and preserve existing authorization and invocation policy.
 
-## Author concise engineering contracts
+## Apply repository guidance
 
-Keep each `SKILL.md` focused on durable, non-obvious knowledge another agent
-needs to implement or verify behavior:
+Read [the tested supplement](references/tested.md) for documentation ownership,
+source grounding, metadata conventions, and local validation. Read
+[the routing contract](references/hierarchy-contract.md) when creating,
+moving, routing, or auditing skills. This entrypoint and the routing contract
+govern where repository-specific guidance differs.
 
-- responsibility and exclusions;
-- inputs, outputs, state, and lifecycle;
-- invariants, ordering, bounds, and decision rules;
-- errors, cancellation, partial evidence, cleanup, and recovery;
-- security and compatibility boundaries;
-- language-neutral acceptance scenarios.
+Store discoverable skills as siblings at `.codex/skills/<skill-name>/`.
+Delegate through `Use [skill-name](relative/path/to/SKILL.md) to <task>.`
+statements at the narrowest owner that can select the task. Keep broad routes
+in `AGENTS.md`; let broader skills route narrower work. Supporting references
+identify related material without creating hierarchy or requiring a reload of
+an already applied parent.
 
-Use imperative or infinitive wording. Keep source-symbol inventories and
-session transcripts out of the contract. Prefer observable behavior and
-package ownership; mention an algorithm only when compatibility or correctness
-depends on it.
+## Author engineering contracts
 
-Keep detailed variants in a directly linked `references` file only when they
-would bloat the body. Keep references one level from `SKILL.md`, explain exactly
-when to read each one, and do not duplicate its content in the body. Add scripts
-only for repeated deterministic work and test every added script. Add assets
-only when they are consumed in repository output.
+Write the durable knowledge needed to implement, review, operate, and verify
+the project. Make responsibility and exclusions clear, then describe relevant
+inputs, outputs, lifecycle, ordering, bounds, invariants, failure and recovery,
+integration boundaries, and observable acceptance scenarios.
 
-## Maintain skill metadata
+Ground behavior in the selected source and tests. Link useful implementation
+and verification entrypoints without copying code or cataloging private
+symbols. Name algorithms only where correctness or compatibility depends on
+them. Distinguish the required contract from implemented, partial, unavailable,
+or unverified behavior.
 
-Use a sibling directory named exactly `.codex/skills/<skill-name>`. Use
-lowercase letters, digits, and hyphens and keep the name under 64 characters.
+Keep shared rules in the broadest relevant owner and specialized rules in the
+narrowest one. Use imperative language. Keep substantial conditional detail in
+references linked beside their task triggers; do not make every task load
+every reference. Add scripts for repeated deterministic work and assets only
+when a workflow consumes them. Remove unused scaffolding and duplicate prose.
 
-Put only `name` and `description` in `SKILL.md` frontmatter. Make the
-description state both the capability and concrete trigger conditions because
-it controls discovery before the body loads.
+## Update guidance at the end of each code-changing turn
 
-Keep `agents/openai.yaml` synchronized with the finished skill:
+Before sending the final response for any turn that changes code, compare the
+final implementation diff with the owning repo-local skills and linked
+references. Include tests, embedded assets, dependencies, scripts, and CI.
+Perform this review after the last implementation change, even when the task
+remains partial or verification fails. Do not defer maintenance to task
+completion, a later turn, or a separate user request.
 
-- derive a human-facing display name from the skill;
-- keep the short description concise and aligned with the responsibility;
-- make the default prompt explicitly invoke `$<skill-name>` for a representative
-  task;
-- include no optional interface fields unless they are deliberately supplied.
+Update affected guidance in that turn: inputs, defaults, lifecycle, failures,
+compatibility, operations, examples, and verification. Repair obsolete links,
+remove superseded instructions, and validate the changed skills and affected
+links before the final response. Briefly report which owners were updated.
 
-Regenerate metadata with the installed `$skill-creator` generator when it is
-stale. Do not hand-maintain divergent descriptions.
+Use actual implementation and observed test evidence. Preserve explicit limits
+when conformance is partial. If the existing guidance remains accurate and
+complete, leave it unchanged and briefly explain why no update was needed in
+the final response. Do not create a separate skill or expand a narrow edit
+merely to record that work occurred.
 
-## Build forward-only actionable routing
+## Derive durable guidance from a session
 
-Store every discoverable skill as a direct sibling under `.codex/skills`.
-Express hierarchy only with an actionable Markdown sentence that:
+Inventory explicit requests, failures and reproduction evidence, user
+corrections, operating preferences, and implementation changes. Classify each
+as a durable contract, reusable troubleshooting procedure, implementation
+evidence, conformance gap, or transient artifact.
 
-1. starts with the imperative `Use`;
-2. links the exact skill name to its relative `SKILL.md`;
-3. contains `to` followed by a concrete task or trigger;
-4. appears in the narrowest router able to make that decision.
+Map durable items to existing owners and compare their source, tests, and
+current guidance before revising them. Preserve user intent as observable
+behavior and acceptance evidence. Keep session identifiers, credentials,
+temporary paths, timestamps, and one-off outputs in working artifacts. Do not
+describe a desired but unimplemented capability as available.
 
-Treat only that complete sentence form as hierarchy. A supporting prose link is
-not a route. Do not add parent metadata, ancestry sections, routing-only
-backlinks, or a leaf routing section with no delegates.
+## Keep diagrams optional
 
-Keep this canonical topology:
-
-- route only `implementation-architecture`, `skill-authoring`, and
-  `source-code-management` from `AGENTS.md`;
-- route `coding-directives`, `implementation-test-pipeline`,
-  `implementation-coverage`, `implementation-reporting`, and
-  `scripts-and-automation` from `implementation-architecture`;
-- keep those specialized skills as leaves unless a future cohesive domain
-  justifies a forward child.
-
-Ensure every route points forward, every target exists, every action is
-selective, every sibling is reachable from `AGENTS.md`, and no cycle exists.
-Put shared invariants in the router and specialized behavior in its leaf rather
-than copying the same contract into both.
+Make prose, examples, and acceptance scenarios sufficient to understand and
+validate a skill. Do not install diagram tooling or add diagram assets as part
+of ordinary authoring. If the user requests a diagram, keep it consistent with
+the owning contract, render and inspect it with available tools, and keep
+disposable previews in `tmp/`. That request does not expand source or tooling
+scope.
 
 ## Revision workflow
 
-1. Read `AGENTS.md`, inventory every sibling skill and `agents/openai.yaml`, and
-   follow all current actionable routes.
-2. Read the source, tests, raw logs, or user correction that establishes the
-   durable behavior. Distinguish required behavior from implementation status.
-3. Select the narrowest existing owner. Add a new skill only when loading the
-   concern independently improves cohesion or context use.
-4. Edit the contract in imperative form. Mark unimplemented or partial behavior
-   honestly instead of describing intended automation as present.
-5. Add or change one forward actionable route at the narrowest dispatch point.
-6. Refresh UI metadata when responsibility or triggering changed.
-7. Remove all initializer instructions, unfinished markers, example placeholders,
-   unused resources, duplicate guidance, and routing-only backlinks.
-8. Run `make skills-check`. Treat this dependency-free repository validator as
-   the CI authority for frontmatter, UI metadata, placeholders, exact route
-   targets, canonical topology, reachability, and cycle detection. When the
-   installed `quick_validate.py` and its YAML dependency are available, run it
-   against every changed skill as a supplementary compatibility check.
-9. Review the validator's route inventory starting at `AGENTS.md`; resolve any
-   missing target, ambiguous action, topology mismatch, cycle, or unreachable
-   sibling instead of weakening the check.
-10. Report the repository-relative routing chain and every validator result.
+1. Read `AGENTS.md` and follow routes relevant to the task. Inventory all skills
+   and metadata for a catalog-wide rewrite or an ownership/routing change.
+2. Inspect the source, tests, commands, or user correction establishing the
+   behavior. Select the narrowest existing owner and any relevant references.
+3. Edit the contract and acceptance scenarios. For a port, adapt terminology,
+   paths, examples, tools, and side effects to this checkout.
+4. Add or update precise forward routes only when delegation changes. Avoid
+   ancestry sections, parent reloads, and empty routing sections in leaves.
+5. Update `agents/openai.yaml` only when its interface changes. Preserve
+   existing policy and dependency fields; use the default metadata workflow.
+6. Run the default skill validator for changed skills when available and
+   `make skills-check` for the repository contract. Check affected reference
+   and source links separately; neither validator establishes source truth.
+7. For ownership changes or a full audit, traverse every root-to-leaf route and
+   try representative requests. For an isolated prose fix, review affected
+   links and behavior without unrelated catalog or runtime work.
+8. Report the changed repository-relative routing chains, validation results,
+   and material evidence limits.
 
-## Validation expectations
+For a substantial rewrite, forward-test representative tasks with a fresh
+agent when available and safe. Supply the skill path, realistic request, and
+minimum raw artifacts, without the intended answer or prior diagnosis. Keep
+evaluation read-only or in a disposable workspace and revise only for observed
+problems.
 
-Treat frontmatter validation as the minimum, not the complete audit. Also
-confirm:
+## Completion criteria and acceptance scenarios
 
-- directory and frontmatter names match;
-- frontmatter contains only the two allowed fields;
-- descriptions contain concrete triggers;
-- bodies are imperative, concise, and free of placeholders;
-- every `agents/openai.yaml` matches its skill;
-- all sibling skills are reachable through the canonical forward graph;
-- specialized implementation contracts retain raw-evidence, status,
-  incompleteness, security, compatibility, determinism, and verification
-  requirements relevant to their owner.
+Finish with valid metadata, concrete discovery triggers, existing link targets,
+acyclic actionable routes, and ownership, behavior, and verification guidance
+that agrees with source. Catalog audits must establish reachability for every
+skill, including informal instructions that a graph validator may miss.
 
-Keep `scripts/skillcheck` standard-library-only and test malformed metadata,
-stale prompts, missing targets, cycles, unreachable skills, and unfinished
-placeholders. Update its canonical topology expectation in the same change as
-an intentional handbook route change.
-
-Forward-test a complex or substantially revised skill with a fresh agent when
-that can be done safely. Give it the skill path and a realistic task, not the
-intended answer or prior diagnosis, then revise the skill if it cannot guide the
-task without leaked context.
+- A narrow correction stays with its owner, preserves invocation policy, and
+  needs neither a new skill nor a diagram.
+- A new concern is discoverable from a representative request through the
+  narrowest appropriate router without loading unrelated leaves.
+- Moving guidance preserves each durable rule, repairs inbound links, and
+  removes obsolete copies. Unresolved limits remain explicit.
+- A turn changes code and ends with partial work or failing checks: the owning
+  guidance still reflects the resulting behavior and verification limits
+  before the final response. A later code edit triggers another review.
+- Passing metadata checks does not establish runtime conformance. Compare
+  representative outputs with source/tests and identify missing end-to-end or
+  native-platform evidence honestly.

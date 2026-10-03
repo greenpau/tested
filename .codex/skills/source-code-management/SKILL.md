@@ -1,9 +1,13 @@
 ---
 name: source-code-management
-description: Create, review, or revise tested repository commit messages and commit-message files. Use when summarizing a tested change for version control, selecting a subsystem indicator, validating the required subject and Before/After/Tests/More info structure, or creating a message file for a user-reviewed commit.
+description: Draft and review tested commit messages and message files. Use when summarizing an intended commit, choosing an indicator, or checking the required subject and Before/After/Tests/More info structure.
 ---
 
 # Source Code Management
+
+Own commit-message content and review artifacts. Keep staging, commits, tags,
+and pushes separate from message drafting; honor the user's explicitly
+requested Git operation when one is part of the task.
 
 ## Inspect the intended change
 
@@ -144,3 +148,14 @@ git commit -F tmp/commits/YYYYMMDD_HHMM_<short-slug>.txt
 
 Re-read the file, check line lengths and required section order, and tell the
 user which staged or unstaged scope it describes. Do not modify the index.
+
+## Acceptance scenarios
+
+- A mixed worktree yields a message describing the selected commit scope,
+  without staging unrelated files or claiming all visible changes belong to it.
+- Unrun checks appear as unrun with a reason; a proposed workflow is not
+  described as implemented or passing.
+- A skill-only change uses the `skills` indicator, keeps the imperative subject
+  below 87 characters, and includes the four required body sections in order.
+- A message-file request creates a reviewable `tmp/commits` artifact and a
+  usable `git commit -F` command while leaving the index unchanged.

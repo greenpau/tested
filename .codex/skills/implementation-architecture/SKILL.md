@@ -1,54 +1,41 @@
 ---
 name: implementation-architecture
-description: Design, implement, review, or audit tested across its CLI, child-process runner, event protocol, result aggregation, coverage, reporting, and artifact-publication boundaries. Use when a change crosses packages, alters run or report lifecycle semantics, introduces a new output, or needs routing to the specialized tested implementation skills.
+description: Design and review tested package contracts and route implementation or automation work. Use when changing CLI or run/report behavior, crossing package boundaries, or selecting a specialized runtime, reporting, coverage, or CI workflow.
 ---
 
 # Implementation Architecture
 
-Develop `tested` as a lossless evidence pipeline with replaceable projections.
-Keep process execution, framing, normalized results, coverage, presentation,
-artifact publication, and exit policy separate while preserving one coherent
-run identity.
+Keep `tested` a lossless evidence pipeline with replaceable presentations.
+Own CLI/app composition and shared lifecycle rules here; delegate algorithms,
+report formats, and operating procedures to their focused owners.
 
-## Implementation workflow
+## Select the work and evidence
 
-1. Define the invocation: command, working directory, managed output directory,
-   configured Go executable, `tested` options, and exact Go argv. Prefer `--`
-   as the unambiguous boundary; preserve positional pass-through after its
-   first positional has selected implicit `run`. Reject ambiguous ownership
-   rather than guessing.
-2. Establish the evidence boundary before starting work. Create the output
-   directory with mode `0700`, open raw stdout and stderr artifacts with mode
-   `0600`, and arrange process-tree cancellation and pipe draining.
-3. Start the child without a shell. Tee bytes to raw evidence before sending
-   them to bounded framing or live presentation.
-4. Decode the `TestEvent`/`BuildEvent` union and aggregate by package, test, and
-   occurrence ordinal. Preserve diagnostics and finalize missing terminal
-   transitions as incomplete.
-5. Treat child wait status as authoritative. After raw streams close, bind that
-   status to their exact sizes and SHA-256 digests in one strict, 1 MiB-bounded
-   `tested/run/v1` document. Retain monotonic `duration_ns` separately from
-   wall-clock timestamps. Limit bindings to the three canonical evidence names,
-   require the event binding, reject duplicate JSON members at every depth,
-   enforce canonical cancellation/exit mappings, and sort bindings by name when
-   encoding. Record parsing, aggregation, coverage, threshold, and report
-   failures separately so later failures do not erase stronger earlier
-   evidence.
-6. Parse coverage with Go profile semantics and statement weights. Run
-   `go tool cover` with its working directory set to the tested module, not the
-   report directory, then apply the fixed report-owned presentation decorator
-   without changing the Go-authored source, spans, selector, or script. When
-   explicitly requested, resolve the configured coverage-diff revision to one
-   immutable local Git commit and add only its bounded comparison model.
-7. Render all presentations from the normalized result and coverage model.
-   Escape the destination syntax, apply configured redaction to presentations,
-   and label measured versus estimated durations.
-8. Stage applicable derived artifacts on the destination filesystem, publish
-   each with an atomic rename, then publish the deterministic checksum manifest
-   last only for a coherent generation.
-9. Verify normal success, ordinary test failure, build failure, malformed or
-   oversized framing, repeated test names, truncated output, cancellation,
-   signal termination, coverage absence, threshold failure, and report failure.
+For runtime or CLI work, read [the runtime contract](references/runtime-contract.md)
+for option ownership, compatibility artifacts, and the canonical run/report
+lifecycle. Automation-only work can go directly to its specialized route.
+
+Start with the invocation and observable result: working/output directories,
+selected Go executable, tested options, exact Go argv, retained evidence,
+derivatives, and final status. Trace the affected boundary through
+[CLI parsing](../../../pkg/cli/options.go),
+[app orchestration](../../../pkg/app/), and the owner below. Do not infer
+success from events or presentation output when process evidence is missing.
+
+1. Locate the owning behavior and inspect source plus representative test
+   assertions before changing the contract.
+2. Preserve raw capture, authoritative child outcome, occurrence identity,
+   bounded normalization, and explicit incompleteness across the change.
+3. Keep status binding, coverage, rendering, and atomic publication in lifecycle
+   order. Propagate cancellation through all of them and withhold a cancelled
+   generation's manifest.
+4. Follow only the specialized routes needed by the task.
+5. Verify the changed boundary and its integration. Report observed evidence
+   separately from checks that were not run or require another native host.
+6. Before the turn's final response, review the final code diff and update the
+   owning repo-local skills and references accordingly. Apply the end-of-turn
+   maintenance requirement even for partial work; report updates or explain
+   why existing guidance needed no change.
 
 ## Ownership and dependency rules
 
@@ -74,74 +61,30 @@ run identity.
 - Define interfaces where they are consumed, keep them small, and pass
   immutable snapshots across publication boundaries.
 
-## Non-negotiable invariants
-
-- `ARCH-001` — The exact child argv and selected workdir determine the Go run;
-  no shell interpolation or implicit caller-directory mutation is permitted.
-- `ARCH-002` — Raw stdout and stderr bytes reach secure evidence files before
-  parsing or presentation. A parser or renderer failure cannot erase them.
-- `ARCH-003` — Child exit, signal, and cancellation are authoritative. Parsed
-  events add detail but cannot convert unsuccessful execution into success.
-- `ARCH-004` — `TestEvent` and `BuildEvent` share one bounded framing stream.
-  Unknown, malformed, oversized, and truncated records produce diagnostics and
-  explicit incompleteness without unbounded allocation.
-- `ARCH-005` — A logical test identity includes an occurrence ordinal.
-  Repeated runs, retries, and repeated package/test names remain distinct.
-- `ARCH-006` — Every accepted package and test reaches a terminal normalized
-  state or the explicit `incomplete` state. Missing evidence is never inferred
-  as pass, skip, or zero-duration completion.
-- `ARCH-007` — A duration derived from an event's authoritative elapsed value
-  is measured. A duration inferred from timestamps is estimated and must be
-  labeled as such in machine and human projections.
-- `ARCH-008` — Coverage totals equal covered statement weight divided by total
-  statement weight. Package percentages are never averaged.
-- `ARCH-009` — The compatibility names are exactly `test_output.jsonl`,
-  `coverage.out`, `test_output.html`, and `coverage.html` under `.coverage`.
-  Omit both coverage artifacts when coverage is disabled; otherwise never
-  fabricate a profile and require a valid profile before generating coverage
-  HTML. Preserve the Go-authored coverage source, annotation spans, selector,
-  and script byte-for-byte while permitting only tested's deterministic,
-  exactly removable viewport, content-security-policy, embedded theme and
-  interaction assets, plus an optional safely encoded bounded diff model.
-  Resolve `--coverage-diff-base` to an immutable commit only when explicitly
-  supplied; never infer a branch, contact a remote, or fetch an object.
-  Additional outputs are derivatives, not substitutions.
-- `ARCH-010` — Managed directories use mode `0700` and managed regular files
-  use mode `0600`. Paths cannot escape the managed output root through
-  traversal or symlinks.
-- `ARCH-011` — Derived files publish atomically and `manifest.json` publishes
-  last. A manifest advertises only complete files and their actual digests.
-- `ARCH-012` — The same normalized input, options, and renderer version produce
-  stable ordering, identifiers, serialization, and checksums.
-- `ARCH-013` — Child failure, cancellation, or signal outranks threshold and
-  reporting failures. If the child succeeds, infrastructure, coverage,
-  threshold, or reporting failure may make the command unsuccessful; all
-  contributing causes remain inspectable.
-- `ARCH-014` — Cancellation addresses the process tree, uses the default
-  two-second graceful interval, forces termination when needed, drains owned
-  pipes, and reaps the child before returning. It remains authoritative through
-  coverage/report publication and prevents manifest publication.
-- `ARCH-015` — Offline reporting trusts child outcome only when a valid
-  `run.json` binds the exact event stream and every retained evidence
-  companion. Explicit external evidence is copied into canonical managed names
-  and stale unselected companions are removed. A bare event stream may be
-  rendered for inspection but cannot imply success.
-- `ARCH-016` — Coverage policy compares the exact statement ratio with the
-  exact `DIGIT+("."DIGIT+)?` threshold from 0 through 100. Limit the input to
-  256 bytes; equality passes. Binary floating point and rounded display
-  percentages never decide the exit status.
-
 ## Specialized workflows
 
-- Use [coding-directives](../coding-directives/SKILL.md) to implement or review tested Go code, package boundaries, errors, security, and verification style.
-- Use [implementation-test-pipeline](../implementation-test-pipeline/SKILL.md) to change child execution, raw capture, event framing, occurrence aggregation, duration evidence, or exit semantics.
-- Use [implementation-coverage](../implementation-coverage/SKILL.md) to change Go coverage profile parsing, merging, totals, thresholds, or canonical cover generation.
-- Use [implementation-reporting](../implementation-reporting/SKILL.md) to change console output, compatibility HTML, JSON, JUnit, index, redaction, escaping, or manifest-visible report metadata.
-- Use [scripts-and-automation](../scripts-and-automation/SKILL.md) to design, add, run, or document Make, CI, cross-build, and release automation.
+- Use [coding-directives](../coding-directives/SKILL.md) to implement or review Go design, API ownership, errors, concurrency, serialization classification, or verification style.
+- Use [implementation-test-pipeline](../implementation-test-pipeline/SKILL.md) to change execution, raw capture, event framing, occurrences, duration evidence, bound run status, offline evidence selection, or exit semantics.
+- Use [implementation-coverage](../implementation-coverage/SKILL.md) to change coverage profile parsing, merging, weighted totals, exact thresholds, Go cover generation, or explicit local Git baselines.
+- Use [implementation-reporting](../implementation-reporting/SKILL.md) to change console or artifact projections, HTML assets, redaction, escaping, managed storage protections, atomic publication, or manifests.
+- Use [scripts-and-automation](../scripts-and-automation/SKILL.md) to select, run, change, or document Make, fixture, CI, cross-build, packaging, or release workflows.
 
-## Acceptance boundary
+## Verification and acceptance
 
-Complete a cross-domain change only when focused owner tests pass, package
-contracts still compose, raw evidence survives each injected downstream
-failure, deterministic fixtures reproduce byte-for-byte, and exit behavior
-preserves the strongest authoritative failure.
+Inspect [CLI tests](../../../pkg/cli/options_test.go) for argv boundaries and
+validation, [application tests](../../../pkg/app/application_test.go) for
+composed run/report behavior, and [exit tests](../../../pkg/app/exit_test.go)
+for precedence. Owner tests qualify their narrower boundaries; fixture and
+native-host checks qualify integration, not merely compilation.
+
+- Explicit `--` and positional pass-through preserve the Go argv; working
+  directory and output directory resolve independently without changing the
+  caller's directory.
+- A successful child plus coherent evidence and requested derivatives returns
+  zero; a downstream failure cannot erase a child test failure or cancellation.
+- A parser, coverage, or renderer failure leaves raw evidence inspectable and
+  prevents a manifest that falsely claims a complete generation.
+- A bound offline rerender reproduces deterministic derivatives; a bare event
+  stream can be inspected but cannot establish success.
+- An automation-only request reaches the automation skill without requiring
+  unrelated parser or renderer changes.
