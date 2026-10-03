@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/greenpau/tested/pkg/coverage"
 	"github.com/greenpau/tested/pkg/result"
 )
 
@@ -351,7 +352,7 @@ func makeSummaryAssessment(view *assessmentView) *Assessment {
 		Issues:               append([]Issue(nil), view.Issues...),
 	}
 	if view.CoveragePolicy != nil {
-		policy := *view.CoveragePolicy
+		policy := view.CoveragePolicy.CoveragePolicy
 		assessment.CoveragePolicy = &policy
 	}
 	return assessment
@@ -420,14 +421,33 @@ func exactPercentage(view *coverageView) string {
 	if view == nil || !view.Available {
 		return ""
 	}
-	return strings.TrimSuffix(view.Percentage, "%")
+	return exactCoveragePercentage(view.Covered, view.Statements)
 }
 
 func exactFilePercentage(view coverageFileView) string {
 	if !view.Available {
 		return ""
 	}
-	return strings.TrimSuffix(view.Percentage, "%")
+	return exactCoveragePercentage(view.Covered, view.Statements)
+}
+
+// Keep the machine-readable decimal projection independent of display bounds.
+func exactCoveragePercentage(covered, statements uint64) string {
+	totals := coverage.Totals{Covered: covered, Statements: statements}
+	value, err := totals.FormatPercentage(2)
+	if err != nil {
+		return ""
+	}
+	if (value == "100.00" && covered < statements) ||
+		(value == "0.00" && covered > 0) {
+		value, err = totals.FormatPercentage(24)
+		if err != nil {
+			return ""
+		}
+		value = strings.TrimRight(value, "0")
+		value = strings.TrimRight(value, ".")
+	}
+	return value
 }
 
 func takeExcerpt(value string, remaining *int) (string, bool) {

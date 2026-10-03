@@ -556,22 +556,18 @@ func durationSeconds(duration time.Duration, known bool) string {
 	return value
 }
 
+// formatCoveragePercentage rounds half up to two decimal places without
+// implying zero or complete coverage when the exact ratio is between them.
 func formatCoveragePercentage(totals coverage.Totals) (string, bool) {
 	value, err := totals.FormatPercentage(2)
 	if err != nil {
 		return "unavailable", false
 	}
-	if (value == "100.00" && totals.Covered < totals.Statements) ||
-		(value == "0.00" && totals.Covered > 0) {
-		value, err = totals.FormatPercentage(24)
-		if err != nil {
-			return "unavailable", false
-		}
-		value = strings.TrimRight(value, "0")
-		value = strings.TrimRight(value, ".")
-	}
-	if value == "" {
-		return "unavailable", false
+	switch {
+	case value == "100.00" && totals.Covered < totals.Statements:
+		return ">99.99%", true
+	case value == "0.00" && totals.Covered > 0:
+		return "<0.01%", true
 	}
 	return value + "%", true
 }

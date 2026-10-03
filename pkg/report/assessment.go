@@ -14,6 +14,8 @@
 
 package report
 
+import "github.com/greenpau/tested/pkg/coverage"
+
 // Issue describes a run-level fact that is not represented by an individual
 // Go test event. Fatal issues make the overall report incomplete.
 type Issue struct {
@@ -63,7 +65,12 @@ type assessmentView struct {
 	EvidenceIncomplete   bool
 	StreamCorrupt        bool
 	Issues               []Issue
-	CoveragePolicy       *CoveragePolicy
+	CoveragePolicy       *coveragePolicyView
+}
+
+type coveragePolicyView struct {
+	CoveragePolicy
+	ActualPercentage string
 }
 
 func (r *Renderer) buildAssessmentView(input *Assessment) *assessmentView {
@@ -91,9 +98,19 @@ func (r *Renderer) buildAssessmentView(input *Assessment) *assessmentView {
 	}
 	if input.CoveragePolicy != nil {
 		policy := *input.CoveragePolicy
+		actual := "unavailable"
+		if policy.Available {
+			actual, _ = formatCoveragePercentage(coverage.Totals{
+				Covered:    policy.Covered,
+				Statements: policy.Statements,
+			})
+		}
 		policy.Minimum = r.redact(policy.Minimum)
 		policy.Actual = r.redact(policy.Actual)
-		view.CoveragePolicy = &policy
+		view.CoveragePolicy = &coveragePolicyView{
+			CoveragePolicy:   policy,
+			ActualPercentage: r.redact(actual),
+		}
 	}
 	return view
 }

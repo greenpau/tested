@@ -53,7 +53,7 @@
 <dl class="assessment-list">
 <div><dt>Child process</dt><dd>{{if .ChildExitKnown}}Exit status recorded{{if .ChildExitInferred}} (inferred){{end}}{{else}}Exit status unavailable{{end}}</dd></div>
 <div><dt>Raw capture</dt><dd>{{if .EvidenceIncomplete}}Incomplete; inspect raw evidence and diagnostics{{else}}Complete{{end}}</dd></div>
-{{with .CoveragePolicy}}<div><dt>Coverage policy</dt><dd>Minimum {{.Minimum}}%; actual {{if .Available}}{{.Actual}}% ({{.Covered}} / {{.Statements}} weighted statements){{else}}unavailable{{end}} — {{if .Satisfied}}satisfied{{else}}not satisfied{{end}}</dd></div>{{end}}
+{{with .CoveragePolicy}}<div><dt>Coverage policy</dt><dd>Minimum {{.Minimum}}%; actual {{.ActualPercentage}}{{if .Available}} ({{.Covered}} / {{.Statements}} weighted statements){{end}} — {{if .Satisfied}}satisfied{{else}}not satisfied{{end}}</dd></div>{{end}}
 </dl>
 {{if .Issues}}<ul class="issue-list">{{range .Issues}}<li><strong>{{.Kind}}</strong>: {{.Message}}{{if .Fatal}} (fatal){{end}}</li>{{end}}</ul>{{end}}
 </div>

@@ -631,8 +631,8 @@ func buildCoveragePolicyJUnit(view reportView) *junitSuite {
 	default:
 		testCase.Failure = &junitIssue{
 			Message: sanitizeXML(
-				"weighted statement coverage " + policy.Actual +
-					"% is below minimum " + policy.Minimum + "%",
+				"weighted statement coverage " + policy.ActualPercentage +
+					" is below minimum " + policy.Minimum + "%",
 			),
 			Type: "coverage",
 		}

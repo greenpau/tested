@@ -70,6 +70,25 @@ Preserve event source order inside one occurrence where order conveys evidence.
 Determinism does not authorize sorting a diagnostic transcript into a different
 story.
 
+## Format coverage percentages
+
+Render weighted coverage totals, per-file coverage, and actual policy coverage
+in HTML, plain/Markdown console output, and JUnit messages with two decimal
+places, rounding half up from the exact integer ratio. When positive coverage
+would round to `0.00%`, show `<0.01%`; when partial coverage would round to
+`100.00%`, show `>99.99%`. Keep truly zero/full coverage and unavailable evidence
+distinct. Redact formatted policy text before destination-specific escaping.
+
+Keep the requested minimum exact and preserve the supplied satisfaction
+decision even when rounded actual coverage appears equal to that minimum.
+Keep JSON numeric percentages, decimal `percent_exact` fields, and the
+high-precision policy `actual` independent of concise display strings. Preserve
+the existing JSON precision and durable run metadata used for offline
+validation. Inspect [display formatting](../../../../pkg/report/view.go),
+[policy views](../../../../pkg/report/assessment.go), and
+[JSON projections](../../../../pkg/report/summary.go) together when changing
+these boundaries.
+
 ## Verification entrypoints
 
 Inspect [console tests](../../../../pkg/report/console_test.go),

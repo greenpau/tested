@@ -507,10 +507,6 @@ func writePlainAssessment(output *bytes.Buffer, assessment *assessmentView) {
 	}
 	if assessment.CoveragePolicy != nil {
 		policy := assessment.CoveragePolicy
-		actual := "unavailable"
-		if policy.Available {
-			actual = policy.Actual + "%"
-		}
 		status := "not satisfied"
 		if policy.Satisfied {
 			status = "satisfied"
@@ -519,7 +515,7 @@ func writePlainAssessment(output *bytes.Buffer, assessment *assessmentView) {
 			output,
 			"Coverage policy: minimum %s%%, actual %s (%s)\n",
 			neutralizeTerminalInline(policy.Minimum),
-			neutralizeTerminalInline(actual),
+			neutralizeTerminalInline(policy.ActualPercentage),
 			status,
 		)
 	}
@@ -547,10 +543,6 @@ func writeMarkdownAssessment(output *bytes.Buffer, assessment *assessmentView) {
 	}
 	if assessment.CoveragePolicy != nil {
 		policy := assessment.CoveragePolicy
-		actual := "unavailable"
-		if policy.Available {
-			actual = policy.Actual + "%"
-		}
 		status := "not satisfied"
 		if policy.Satisfied {
 			status = "satisfied"
@@ -559,7 +551,7 @@ func writeMarkdownAssessment(output *bytes.Buffer, assessment *assessmentView) {
 			output,
 			"| Coverage policy | minimum %s%%; actual %s; %s |\n",
 			escapeMarkdown(policy.Minimum),
-			escapeMarkdown(actual),
+			escapeMarkdown(policy.ActualPercentage),
 			status,
 		)
 	}

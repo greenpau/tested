@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"html"
 	"io"
 	"os"
 	"path/filepath"
@@ -1152,7 +1153,7 @@ func TestCoveragePresentationUsesExactUint64Arithmetic(t *testing.T) {
 	const expected = "99.999999999999999994578989"
 	view := renderer.buildView(input)
 	if view.Coverage == nil ||
-		view.Coverage.Percentage != expected+"%" {
+		view.Coverage.Percentage != ">99.99%" {
 		t.Fatalf("coverage view = %#v", view.Coverage)
 	}
 	summary := renderer.buildSummary(input)
@@ -1162,6 +1163,153 @@ func TestCoveragePresentationUsesExactUint64Arithmetic(t *testing.T) {
 	}
 	if summary.Coverage.Percent == nil {
 		t.Fatal("summary omitted backward-compatible numeric coverage")
+	}
+}
+
+func TestCoveragePercentagesStayConciseAcrossPresentations(t *testing.T) {
+	renderer, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name       string
+		covered    uint64
+		statements uint64
+		minimum    string
+		actual     string
+		want       string
+		exact      string
+		satisfied  bool
+	}{
+		{
+			name: "reported policy", covered: 5789, statements: 7195,
+			minimum: "1", actual: "80.458651841556636553161918",
+			want: "80.46%", exact: "80.46", satisfied: true,
+		},
+		{
+			name: "repeating below minimum", covered: 2, statements: 3,
+			minimum: "66.67", actual: "66.666666666666666666666667",
+			want: "66.67%", exact: "66.67",
+		},
+		{
+			name: "half rounds up", covered: 1, statements: 32,
+			minimum: "100", actual: "3.125", want: "3.13%", exact: "3.13",
+		},
+		{
+			name: "positive rounds to zero", covered: 1, statements: ^uint64(0),
+			minimum: "100", actual: "0.000000000000000005421011",
+			want: "<0.01%", exact: "0.000000000000000005421011",
+		},
+		{
+			name: "partial rounds to full", covered: ^uint64(0) - 1, statements: ^uint64(0),
+			minimum: "100", actual: "99.999999999999999994578989",
+			want: ">99.99%", exact: "99.999999999999999994578989",
+		},
+		{
+			name: "zero", statements: 10, minimum: "100", actual: "0",
+			want: "0.00%", exact: "0.00",
+		},
+		{
+			name: "full", covered: 10, statements: 10, minimum: "100", actual: "100",
+			want: "100.00%", exact: "100.00", satisfied: true,
+		},
+		{
+			name: "unavailable", minimum: "1", want: "unavailable",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			totals := coverage.Totals{Covered: test.covered, Statements: test.statements}
+			policy := CoveragePolicy{
+				Minimum: test.minimum, Actual: test.actual,
+				Covered: test.covered, Statements: test.statements,
+				Available: test.statements > 0, Satisfied: test.satisfied,
+			}
+			input := Input{
+				Result: result.Result{Finalized: true},
+				Coverage: &coverage.Profile{
+					Mode: coverage.ModeCount, Total: totals,
+					Files: []coverage.FileSummary{{Name: "sample.go", Totals: totals}},
+				},
+				Assessment: &Assessment{
+					ChildStarted: true, ChildExitKnown: true, CoveragePolicy: &policy,
+				},
+			}
+			var testHTML, indexHTML bytes.Buffer
+			if err := renderer.RenderTestOutputHTML(&testHTML, input); err != nil {
+				t.Fatal(err)
+			}
+			if err := renderer.RenderIndexHTML(&indexHTML, input, nil); err != nil {
+				t.Fatal(err)
+			}
+			// The test page includes aggregate, per-file, and policy percentages.
+			if got := strings.Count(testHTML.String(), html.EscapeString(test.want)); got < 4 {
+				t.Errorf("test HTML contains %q %d times, want at least 4", test.want, got)
+			}
+			if !strings.Contains(indexHTML.String(), html.EscapeString(test.want)) {
+				t.Errorf("index HTML missing %q", test.want)
+			}
+			for _, format := range []ConsoleFormat{ConsolePlain, ConsoleMarkdown} {
+				var output bytes.Buffer
+				console, err := NewConsole(ConsoleOptions{Writer: &output, Format: format})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := console.Final(input); err != nil {
+					t.Fatal(err)
+				}
+				want := test.want
+				if format == ConsoleMarkdown {
+					want = escapeMarkdown(want)
+				}
+				if !strings.Contains(output.String(), "actual "+want) ||
+					strings.Count(output.String(), want) < 2 {
+					t.Errorf("%s console missing concise coverage %q: %s", format, want, &output)
+				}
+			}
+			var junit bytes.Buffer
+			if err := renderer.RenderJUnitXML(&junit, input); err != nil {
+				t.Fatal(err)
+			}
+			var suites junitSuites
+			if err := xml.Unmarshal(junit.Bytes(), &suites); err != nil {
+				t.Fatal(err)
+			}
+			if !test.satisfied {
+				suite := findJUnitSuite(suites.Suites, "tested coverage policy")
+				if suite == nil || len(suite.Cases) != 1 {
+					t.Fatalf("missing JUnit policy case: %s", &junit)
+				}
+				if policy.Available {
+					want := "weighted statement coverage " + test.want +
+						" is below minimum " + test.minimum + "%"
+					if suite.Failures != 1 || suite.Cases[0].Failure == nil ||
+						suite.Cases[0].Failure.Message != want {
+						t.Errorf("JUnit policy failure = %#v, want %q", suite.Cases[0].Failure, want)
+					}
+				} else if suite.Errors != 1 {
+					t.Errorf("unavailable JUnit policy errors = %d, want 1", suite.Errors)
+				}
+			}
+			var summary bytes.Buffer
+			if err := renderer.RenderSummaryJSON(&summary, input); err != nil {
+				t.Fatal(err)
+			}
+			var document summaryDocument
+			if err := json.Unmarshal(summary.Bytes(), &document); err != nil {
+				t.Fatal(err)
+			}
+			if document.Coverage.PercentExact != test.exact ||
+				document.Coverage.Files[0].PercentExact != test.exact {
+				t.Errorf("JSON decimals changed: %#v", document.Coverage)
+			}
+			if got := document.Assessment.CoveragePolicy; *got != policy {
+				t.Errorf("JSON policy changed: %#v, want %#v", got, policy)
+			}
+			if policy.Actual != test.actual || policy.Satisfied != test.satisfied {
+				t.Errorf("rendering mutated the input policy: %#v", policy)
+			}
+		})
 	}
 }
 
