@@ -18,7 +18,30 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
+
+	"github.com/greenpau/tested/pkg/result"
 )
+
+// bindHTMLHierarchy projects normalized parent identities before redaction can
+// make distinct names look alike. Missing parents stay at the package root.
+// Requiring a strict name prefix also prevents malformed input from producing
+// a cycle. IDs contain only deterministic indexes, never unredacted names.
+func bindHTMLHierarchy(tests []result.TestOccurrence, views []occurrenceView, packageIndex int) {
+	ids := make(map[result.OccurrenceID]string, len(tests))
+	for i, test := range tests {
+		views[i].HTMLID = fmt.Sprintf("test-%d-%d", packageIndex, i)
+		ids[test.ID] = views[i].HTMLID
+	}
+	for i, test := range tests {
+		parent := test.Parent
+		if parent == nil || parent.Package != test.ID.Package ||
+			parent.Name == "" || !strings.HasPrefix(test.ID.Name, parent.Name+"/") {
+			continue
+		}
+		views[i].ParentHTMLID = ids[*parent]
+	}
+}
 
 // RenderTestOutputHTML writes a self-contained searchable test report.
 func (r *Renderer) RenderTestOutputHTML(writer io.Writer, input Input) error {

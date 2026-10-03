@@ -423,7 +423,7 @@ h5 {
 }
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem);
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 12rem) auto;
   gap: 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -452,6 +452,74 @@ h5 {
 }
 .control select {
   cursor: pointer;
+}
+.view-control {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.view-control legend {
+  padding: 0;
+}
+.view-options {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--muted);
+  padding: 0.2rem;
+}
+.view-options label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.7rem;
+  border-radius: calc(var(--radius) * 0.7);
+  padding: 0 0.5rem;
+  cursor: pointer;
+}
+.view-options label:has(input:checked) {
+  background: var(--card);
+  color: var(--foreground);
+}
+.view-options input {
+  margin: 0;
+  accent-color: var(--primary);
+}
+.tree-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.tree-controls .meta {
+  font-size: 0.72rem;
+}
+.tree-controls button,
+.branch-toggle {
+  min-height: 2rem;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.tree-controls button:disabled,
+.branch-toggle:disabled {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+.branch-toggle {
+  margin-top: 0.65rem;
 }
 #match-count {
   min-height: 1.25rem;
@@ -498,9 +566,19 @@ h5 {
 .test-row {
   min-width: 0;
   margin: 0;
-  padding: 0.85rem 1rem;
+  padding: 0;
   border-bottom: 1px solid var(--border);
   background: var(--card);
+}
+.test-content {
+  min-width: 0;
+  padding: 0.85rem 1rem;
+}
+[data-view="nested"] .test-content {
+  padding-inline-start: calc(1rem + var(--test-depth) * 1rem);
+}
+.test-children:not(:empty) {
+  border-top: 1px solid var(--border);
 }
 .test-row:last-child {
   border-bottom: 0;
@@ -625,13 +703,16 @@ tbody tr:hover {
   }
   .package-header,
   .package-body,
-  .test-row,
+  .test-content,
   .section-header,
   .section-body,
   .build-header,
   .build-body {
     padding-right: 0.8rem;
     padding-left: 0.8rem;
+  }
+  [data-view="nested"] .test-content {
+    padding-inline-start: calc(0.8rem + var(--test-depth) * 0.4rem);
   }
 }
 @media print {
@@ -640,8 +721,10 @@ tbody tr:hover {
     padding: 0;
   }
   .toolbar-wrap,
-  .skip-link {
-    display: none;
+  #report-controls,
+  .skip-link,
+  .test-content > .branch-toggle {
+    display: none !important;
   }
   .section-card,
   .package-card,
@@ -658,6 +741,9 @@ tbody tr:hover {
   }
   details > * {
     display: block !important;
+  }
+  details::details-content {
+    content-visibility: visible;
   }
   details > summary {
     display: none !important;

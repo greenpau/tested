@@ -34,6 +34,37 @@ translucent white borders.
   their native details while hiding filter controls. Print the index catalog
   as rendered and the currently selected Go coverage file with its legend.
 
+## Preserve test hierarchy across view changes
+
+Keep Flat as the initial test-report view and expose a keyboard-accessible
+Flat/Nested radio group after the embedded script initializes. Resolve nested
+edges from normalized `TestOccurrence.Parent` identities, including the exact
+package and ordinal, before redaction can merge visible names. Use deterministic
+numeric DOM identifiers. Do not reconstruct parents from displayed slash paths
+or assume child and parent ordinals match. Retain missing or invalid parents at
+the package root; require a strict ancestor-name boundary to prevent cycles.
+Inspect [HTML hierarchy projection](../../../../pkg/report/html.go) and
+[hierarchy tests](../../../../pkg/report/html_test.go).
+
+Move the existing occurrence elements when switching layouts; preserve their
+order, output, metadata, open details, filters, and branch-collapse state.
+Keep indentation bounded for deep hierarchies. Match each row's own evidence
+and package identity, then reveal its ancestors as context in Nested view.
+Count direct matches independently of context rows and collapse state. Active
+filters must reveal matching branches, temporarily disable collapse controls,
+and restore the user's branch state when cleared. Keep build and integrity
+evidence filterable in both layouts.
+
+Keep behavior offline and self-contained, with no storage or network access.
+Without JavaScript, hide inactive controls and retain the flat report with
+all native details initially open. WebKit cannot reliably reveal manually
+closed details through print CSS alone: with scripts enabled, open details
+for `beforeprint` and restore them after printing; without scripts, preserve
+the expanded static fallback. Print rules must hide controls even when a
+generic `[hidden]` override reveals filtered results.
+
+## Preserve the canonical coverage presentation
+
 Own the shared tokens and page-specific styles in `pkg/report`. For
 `coverage.html`, preserve the selected Go toolchain's source, annotation spans,
 file selector, and script byte-for-byte. Apply one deterministic, exactly
@@ -110,6 +141,11 @@ Compare [embedded assets](../../../../pkg/report/assets/) with
 
 The repository's Go tests check generated markup, CSS, scripts, security, and
 selected-toolchain decoration. They do not establish browser layout or actual
-keyboard/print interactions. Use available browser tooling when qualifying
-those changes, keep previews disposable, and report unverified modes explicitly.
-Do not invent a browser test target or install tooling for a prose-only edit.
+keyboard/print interactions. The [browser suite](../../../../scripts/browser/)
+and `make e2e-browser` exercise generated `file://` test reports in Chromium and
+WebKit, including repeated and redacted identities, filters, missing parents,
+incomplete/build-only/empty evidence, keyboard focus, print, mobile/light/dark
+layouts, no-script fallback, and deterministic offline rerendering. Inspect its
+screenshots as well as assertions; it does not qualify the coverage explorer or
+other browser engines. Keep previews disposable and report unverified modes
+explicitly. Do not install browser tooling for a prose-only edit.

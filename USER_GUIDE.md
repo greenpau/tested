@@ -315,11 +315,24 @@ bounded output are embedded locally. It provides:
 
 - package, status, and text filtering;
 - direct status filtering for failed and incomplete results;
+- a Flat / Nested view toggle, with expandable subtest branches;
 - repeated-occurrence labels;
 - package build and setup diagnostics;
 - explicit incomplete states;
 - duration source and weighted coverage;
 - output truncation notices pointing to the raw JSONL.
+
+Use **View → Nested** to group subtests beneath their recorded parent
+occurrence. Repeated runs remain separate, including when a child runs only
+on some attempts. **Expand all**, **Collapse all**, and the subtest buttons
+control the branches. Search and status filters temporarily reveal matching
+branches and their ancestors; clearing the filters restores your collapsed
+branches. Switching views preserves filters and open output panels. Flat is
+the default on each page load. Without JavaScript, the report keeps the flat
+layout and starts all output panels expanded so they remain printable.
+With JavaScript enabled, printing includes all retained results and output,
+even when filtered or collapsed on screen. The toggle works when opening the
+file directly.
 
 `index.html`, `test_output.html`, and `coverage.html` share a compact
 operational theme with no remote dependencies. The pages respond to narrow

@@ -53,6 +53,30 @@ package. Copy deterministic derivative baselines outside `.coverage`, run
 offline `tested report`, compare exact bytes, and validate the rebuilt bundle
 again.
 
+## Qualify interactive test reports in browsers
+
+Use `make e2e-browser` for test-report layout and interaction changes. The
+target builds the current binary, then runs the pinned Playwright development
+suite in [scripts/browser](../../../../scripts/browser/). Install its tooling
+explicitly with `npm --prefix scripts/browser ci` and
+`npm --prefix scripts/browser exec -- playwright install chromium webkit`;
+on Linux, add `--with-deps` when browser system libraries are needed. Require
+Node.js 20 or newer. Keep these dependencies out of the Go runtime and ordinary
+Go-only Make targets; `make ci` does not install or run browser tooling.
+
+Open generated reports through `file://`, without a web server. Use the
+controlled [browser fixture](../../../../testdata/browser/) for repeated,
+parallel, deep, skipped, failing, and redacted subtests; use imported evidence
+for missing parents, incomplete runs, build-only cases, and empty streams.
+Assert the expected nonzero CLI results instead of masking them. Resolve the
+test-owned temporary root through its real path on macOS before giving it to
+the managed artifact writer, and remove only that owned directory on teardown.
+Check exact offline rerendering, DOM identity, filtering, keyboard controls,
+print restoration, narrow/light/dark layouts, security, and the no-script
+fallback. Keep screenshots, PDFs, and failure traces in the ignored
+`scripts/browser/test-results/` directory. These checks qualify Chromium and
+WebKit test reports, not coverage-explorer interactions or other browser engines.
+
 ## Keep CI grounded in the checked-in workflows
 
 Inspect [CI](../../../../.github/workflows/ci.yml) before changing its matrix.
@@ -85,6 +109,13 @@ write it to `$GITHUB_OUTPUT`, and consume that step output as the artifact
 name. Upload the complete hidden `.coverage/` directory instead of enumerating
 its current files so future managed derivatives remain available as diagnostic
 evidence.
+
+The Go 1.26 conformance job also installs Node.js 24 through a pinned setup-node
+action, runs `npm ci` against the browser lockfile, explicitly installs Chromium
+and WebKit with their system dependencies, and runs `make e2e-browser`. Preserve
+the explicit installation steps instead of hiding downloads inside the Make
+target. The Go 1.25 minimum and native lifecycle jobs remain independent of
+browser dependencies.
 
 Add operating systems to the matrix when they exercise distinct process-tree
 behavior. Do not mark Windows, Darwin, or Linux cancellation supported solely

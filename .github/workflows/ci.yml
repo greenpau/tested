@@ -132,6 +132,19 @@ jobs:
       - name: Cross-compile portable profiles
         run: make cross-build
 
+      - name: Set up Node for browser tests
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+
+      - name: Install browser test dependencies
+        run: |
+          npm --prefix scripts/browser ci
+          npm --prefix scripts/browser exec -- playwright install --with-deps chromium webkit
+
+      - name: Test local HTML reports in Chromium and WebKit
+        run: make e2e-browser
+
       - name: Validate repository skill metadata and route graph
         run: make skills-check
 

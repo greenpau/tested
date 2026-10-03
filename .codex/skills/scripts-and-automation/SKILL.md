@@ -31,6 +31,7 @@ The current Make surface is:
 | `make self-test` | Build, replace root `.coverage`, run with coverage and explicit `HEAD` baseline, then validate its bundle. |
 | `make test` / `make coverage` | Run bootstrap checks followed by one canonical self-test. |
 | `make e2e` | Build and exercise controlled fixtures, offline rerender, failures, bounds, and benchmark/metadata cases. |
+| `make e2e-browser` | Build and exercise local HTML reports in Chromium/WebKit with explicitly installed Node/Playwright tooling. |
 | `make e2e-go126-metadata` | Exercise Go 1.26 metadata with the already-built binary; explicitly skip on older Go. |
 | `make cross-build` | Compile Linux/Darwin amd64/arm64 and Windows amd64/386/arm64, including Windows test compilation. |
 | `make ci` | Run skills-check, test, e2e, and cross-build. |

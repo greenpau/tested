@@ -192,6 +192,10 @@ e2e: build
 	@! grep -q '"incomplete":' ./testdata/fixture/.coverage/summary.json
 	@echo "$@: complete"
 
+.PHONY: e2e-browser
+e2e-browser: build
+	@npm --prefix scripts/browser test
+
 .PHONY: e2e-go126-metadata
 e2e-go126-metadata:
 	@set -eu; \

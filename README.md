@@ -297,6 +297,25 @@ make release-check
 make release
 ```
 
+Browser E2E tests open generated reports directly through `file://` in Chromium
+and WebKit. They require Node.js 20 or newer and a separate, pinned development
+dependency; the Go binary still has no browser or Node.js runtime dependency.
+Install the tooling explicitly, then run the suite:
+
+```bash
+npm --prefix scripts/browser ci
+npm --prefix scripts/browser exec -- playwright install chromium webkit
+make e2e-browser
+```
+
+On Linux, add `--with-deps` to the browser installation command if system
+libraries are missing. The suite builds the current binary, runs controlled
+fixtures in private temporary directories, and checks hierarchy, filtering,
+keyboard controls, print, dark mode, mobile layouts, and the no-JavaScript
+fallback. Screenshots and failure traces are written under
+`scripts/browser/test-results/`. The Go conformance CI job runs this suite
+separately from `make ci`, which keeps its Go-only tool requirements.
+
 `make release` is an operator-controlled publication workflow modeled on the
 other Greenpau Go repositories. From a clean `main` branch, it requires the
 pinned `versioned` 1.0.36 tool, confirms that the next patch tag is absent

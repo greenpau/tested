@@ -4,6 +4,9 @@
 /dist/
 /.doc/
 /tmp/
+/scripts/browser/node_modules/
+/scripts/browser/test-results/
+/scripts/browser/playwright-report/
 
 # Go binaries, test binaries, profiles, and workspaces
 *.exe

@@ -238,7 +238,7 @@ func TestLoadReportAssetsReturnsErrors(t *testing.T) {
 	}
 }
 
-func TestCoverageJavaScriptSecurityAndInteractionContract(t *testing.T) {
+func TestCoverageJavaScriptInteractionContract(t *testing.T) {
 	data, err := reportAssets.ReadFile("assets/coverage.js")
 	if err != nil {
 		t.Fatal(err)
@@ -274,28 +274,40 @@ func TestCoverageJavaScriptSecurityAndInteractionContract(t *testing.T) {
 			t.Errorf("coverage.js lacks interaction contract %q", expected)
 		}
 	}
-	lower := strings.ToLower(source)
-	for _, forbidden := range []string{
-		"innerhtml",
-		"outerhtml",
-		"insertadjacenthtml",
-		"document.write",
-		"document.writeln",
-		"eval(",
-		"new function",
-		"fetch(",
-		"xmlhttprequest",
-		"websocket",
-		"localstorage",
-		"sessionstorage",
-		"indexeddb",
-		"navigator.clipboard",
-		"window.open",
-		"dynamic import",
-	} {
-		if strings.Contains(lower, forbidden) {
-			t.Errorf("coverage.js contains forbidden API %q", forbidden)
-		}
+}
+
+func TestReportJavaScriptSecurity(t *testing.T) {
+	for _, name := range []string{"coverage.js", "test_output.js"} {
+		t.Run(name, func(t *testing.T) {
+			data, err := reportAssets.ReadFile("assets/" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := string(data)
+			lower := strings.ToLower(source)
+			for _, forbidden := range []string{
+				"innerhtml",
+				"outerhtml",
+				"insertadjacenthtml",
+				"document.write",
+				"document.writeln",
+				"eval(",
+				"new function",
+				"fetch(",
+				"xmlhttprequest",
+				"websocket",
+				"localstorage",
+				"sessionstorage",
+				"indexeddb",
+				"navigator.clipboard",
+				"window.open",
+				"dynamic import",
+			} {
+				if strings.Contains(lower, forbidden) {
+					t.Errorf("script contains forbidden API %q", forbidden)
+				}
+			}
+		})
 	}
 }
 

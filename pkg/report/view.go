@@ -67,6 +67,8 @@ type packageView struct {
 }
 
 type occurrenceView struct {
+	HTMLID              string
+	ParentHTMLID        string
 	Package             string
 	Name                string
 	Label               string
@@ -248,6 +250,7 @@ func (r *Renderer) buildView(input Input) reportView {
 				})
 			}
 		}
+		bindHTMLHierarchy(tests, pkgView.Tests, len(view.Packages))
 		view.Packages = append(view.Packages, pkgView)
 	}
 
