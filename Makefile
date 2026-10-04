@@ -5,7 +5,7 @@ TEST_DIR:=./...
 RELEASE_BRANCH?=main
 RELEASE_REMOTE?=origin
 VERSIONED?=versioned
-VERSIONED_VERSION:=1.0.36
+export RELEASE_BRANCH RELEASE_REMOTE VERSIONED
 
 ifeq ($(APP_VERSION),)
 $(error VERSION must contain a major.minor.patch release version)
@@ -16,31 +16,24 @@ all: info build
 	@echo "$@: complete"
 
 .PHONY: info
-info:
+info: version-check
 	@sh ./scripts/build.sh info '$(APP_VERSION)'
 
 .PHONY: version-check
 version-check:
-	@version_lines="$$(awk 'END { print NR }' VERSION)"; \
-	version="$$(awk 'NR == 1 { sub(/\r$$/, ""); print }' VERSION)"; \
-	if [ "$$version_lines" -ne 1 ] || \
-		! printf '%s\n' "$$version" | \
-			grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; then \
-		echo "VERSION must contain exactly one major.minor.patch line"; \
-		exit 1; \
-	fi
+	@go run ./scripts/releaseversion check
 
 .PHONY: skills-check
 skills-check:
 	@go run ./scripts/skillcheck -root .
 
 .PHONY: build
-build:
+build: version-check
 	@sh ./scripts/build.sh build '$(APP_VERSION)' '$(BINARY)'
 	@echo "$@: complete"
 
 .PHONY: install
-install:
+install: version-check
 	@sh ./scripts/build.sh install '$(APP_VERSION)'
 	@echo "$@: complete"
 
@@ -100,7 +93,7 @@ test:
 
 .PHONY: e2e
 e2e: build
-	@$(MAKE) e2e-version
+	@$(MAKE) e2e-version e2e-release
 	@echo "$@: started"
 	@rm -rf ./testdata/fixture/.coverage
 	@$(BINARY) run -C ./testdata/fixture --minimum-coverage 1 -- -count=2 ./...
@@ -246,7 +239,7 @@ cross-build:
 	@echo "$@: complete"
 
 .PHONY: ci
-ci:
+ci: version-check
 	@$(MAKE) skills-check
 	@$(MAKE) test
 	@$(MAKE) e2e
@@ -255,14 +248,14 @@ ci:
 
 .PHONY: release-check
 release-check: version-check
-	@status="$$(git status --porcelain --untracked-files=all)"; \
+	@set -eu; status="$$(git status --porcelain --untracked-files=all)"; \
 	if [ -n "$$status" ]; then \
 		echo "release-check requires a clean worktree:"; \
 		echo "$$status"; \
 		exit 1; \
 	fi
 	@$(MAKE) ci
-	@status="$$(git status --porcelain --untracked-files=all)"; \
+	@set -eu; status="$$(git status --porcelain --untracked-files=all)"; \
 	if [ -n "$$status" ]; then \
 		echo "release-check modified the worktree:"; \
 		echo "$$status"; \
@@ -270,133 +263,32 @@ release-check: version-check
 	fi
 	@echo "$@: complete"
 
-.PHONY: release-git-check
-release-git-check: version-check
-	@echo "$@: started"
-	@branch="$$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"; \
-	if [ "$$branch" != "$(RELEASE_BRANCH)" ]; then \
-		echo "cannot release from branch '$$branch'; expected $(RELEASE_BRANCH)"; \
-		exit 1; \
-	fi
-	@if ! command -v "$(VERSIONED)" >/dev/null 2>&1; then \
-		echo "release requires versioned $(VERSIONED_VERSION)"; \
-		echo "install it with:"; \
-		echo "  go install github.com/greenpau/versioned/cmd/versioned@v$(VERSIONED_VERSION)"; \
-		exit 1; \
-	fi
-	@versioned_banner="$$("$(VERSIONED)" -version 2>/dev/null)"; \
-	case "$$versioned_banner" in \
-		"versioned $(VERSIONED_VERSION),"*) ;; \
-		*) \
-			echo "release requires versioned $(VERSIONED_VERSION), got '$$versioned_banner'"; \
-			exit 1; \
-			;; \
-	esac
-	@if ! git remote get-url "$(RELEASE_REMOTE)" >/dev/null 2>&1; then \
-		echo "release remote '$(RELEASE_REMOTE)' is not configured"; \
-		exit 1; \
-	fi
-	@status="$$(git status --porcelain --untracked-files=all)"; \
-	if [ -n "$$status" ]; then \
-		echo "release requires a clean worktree:"; \
-		echo "$$status"; \
-		exit 1; \
-	fi
-	@probe="$$(mktemp "$${TMPDIR:-/tmp}/tested-release-version.XXXXXX")" || \
-		exit 1; \
-	trap 'rm -f "$$probe"' 0 1 2 15; \
-	cp VERSION "$$probe"; \
-	"$(VERSIONED)" -source "$$probe" -patch -silent; \
-	version="$$(awk 'NR == 1 { sub(/\r$$/, ""); print; exit }' "$$probe")"; \
-	tag="v$$version"; \
-	if git show-ref --verify --quiet "refs/tags/$$tag"; then \
-		echo "release tag $$tag already exists locally"; \
-		exit 1; \
-	fi; \
-	if git ls-remote --exit-code --tags "$(RELEASE_REMOTE)" \
-		"refs/tags/$$tag" >/dev/null 2>&1; then \
-		echo "release tag $$tag already exists on $(RELEASE_REMOTE)"; \
-		exit 1; \
-	else \
-		remote_status="$$?"; \
-		if [ "$$remote_status" -ne 2 ]; then \
-			echo "failed to inspect $$tag on $(RELEASE_REMOTE)"; \
-			exit "$$remote_status"; \
-		fi; \
-	fi; \
-	echo "release-git-check: $$tag is available"
-	@echo "$@: complete"
-
-.PHONY: release-update-version
-release-update-version:
-	@echo "$@: started"
-	@previous="$$(awk 'NR == 1 { sub(/\r$$/, ""); print; exit }' VERSION)"; \
-	"$(VERSIONED)" -patch; \
-	version="$$(awk 'NR == 1 { sub(/\r$$/, ""); print; exit }' VERSION)"; \
-	if [ "$$version" = "$$previous" ]; then \
-		echo "versioned did not change VERSION"; \
-		exit 1; \
-	fi; \
-	echo "release-update-version: $$previous -> $$version"
-	@$(MAKE) version-check
-	@git add -- VERSION
-	@staged="$$(git diff --cached --name-only)"; \
-	untracked="$$(git ls-files --others --exclude-standard)"; \
-	if [ "$$staged" != "VERSION" ] || ! git diff --quiet -- || \
-		[ -n "$$untracked" ]; then \
-		echo "release version update changed files other than VERSION"; \
-		git status --short; \
-		exit 1; \
-	fi
-	@echo "$@: complete"
-
-.PHONY: release-git-commit
-release-git-commit:
-	@echo "$@: started"
-	@set -eu; \
-	version="$$(awk 'NR == 1 { sub(/\r$$/, ""); print; exit }' VERSION)"; \
-	tag="v$$version"; \
-	subject="ops: release $$tag"; \
-	if [ "$${#subject}" -ge 87 ]; then \
-		echo "release commit subject is too long: $$subject"; \
-		exit 1; \
-	fi; \
-	staged="$$(git diff --cached --name-only)"; \
-	if [ "$$staged" != "VERSION" ]; then \
-		echo "release commit must stage only VERSION"; \
-		git status --short; \
-		exit 1; \
-	fi; \
-	if git show-ref --verify --quiet "refs/tags/$$tag"; then \
-		echo "release tag $$tag already exists locally"; \
-		exit 1; \
-	fi; \
-	git commit \
-		-m "$$subject" \
-		-m "Before this commit: VERSION identified the current tested version." \
-		-m "After this commit: VERSION identifies $$tag for tagged publication." \
-		-m "Tests: make release-check passed before the version update." \
-		-m "More info: make release generated this version-only release commit."; \
-	git tag -a "$$tag" -m "$$tag"; \
-	git push --atomic "$(RELEASE_REMOTE)" \
-		"refs/heads/$(RELEASE_BRANCH):refs/heads/$(RELEASE_BRANCH)" \
-		"refs/tags/$$tag:refs/tags/$$tag"; \
-	echo "published $$tag to $(RELEASE_REMOTE)"; \
-	echo "If retraction is necessary, review and run:"; \
-	echo "  git push --delete $(RELEASE_REMOTE) $$tag"; \
-	echo "  git tag --delete $$tag"; \
-	echo "  go mod edit -retract $$tag"
-	@echo "$@: complete"
-
-.PHONY: release
+# These targets publish only when explicitly requested by an operator.
+.PHONY: release minor-release fast-release fast-minor-release release-git-check
 release:
-	@echo "$@: started"
-	@$(MAKE) release-git-check
-	@$(MAKE) release-check
-	@$(MAKE) release-git-check
-	@$(MAKE) release-update-version
-	@$(MAKE) release-git-commit
-	@echo "$@: complete"
+	@sh ./scripts/release.sh patch
+
+minor-release:
+	@sh ./scripts/release.sh minor
+
+fast-release:
+	@sh ./scripts/release.sh patch --skip-tests
+
+fast-minor-release:
+	@sh ./scripts/release.sh minor --skip-tests
+
+release-git-check:
+	@sh ./scripts/release.sh check
+
+# Partial entry points cannot bypass the complete release workflow.
+.PHONY: release-update-version release-git-commit
+release-update-version release-git-commit:
+	@echo "Use make release, minor-release, fast-release, or fast-minor-release." >&2
+	@exit 1
+
+.PHONY: e2e-release
+e2e-release:
+	@go test -v -count=1 -tags=integration -run '^TestReleaseWorkflow' ./scripts/releaseversion
 
 .PHONY: docs
 docs:

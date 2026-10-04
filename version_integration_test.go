@@ -208,7 +208,7 @@ func TestVersionBuild(t *testing.T) {
 
 func copyVersionSource(t *testing.T, root, target string) []string {
 	t.Helper()
-	files := []string{"main.go", "go.mod", "Makefile", "VERSION", ".gitignore", "scripts/build.sh"}
+	files := []string{"main.go", "go.mod", "Makefile", "VERSION", ".gitignore", "scripts/build.sh", "scripts/releaseversion/main.go"}
 	for _, dir := range []string{"pkg", "internal"} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {

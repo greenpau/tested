@@ -323,6 +323,7 @@ make skills-check
 make test
 make self-test
 make e2e
+make e2e-release
 make cross-build
 make ci
 make release-check
@@ -348,14 +349,54 @@ fallback. Screenshots and failure traces are written under
 `scripts/browser/test-results/`. The Go conformance CI job runs this suite
 separately from `make ci`, which keeps its Go-only tool requirements.
 
-`make release` is an operator-controlled publication workflow modeled on the
-other Greenpau Go repositories. From a clean `main` branch, it requires the
-pinned `versioned` 1.0.36 tool, confirms that the next patch tag is absent
-locally and on `origin`, runs the complete `release-check`, increments
-`VERSION`, creates a repository-compliant release commit and annotated tag,
-then atomically pushes only `main` and that tag. The tag starts the GitHub
-release workflow. Do not invoke this target from CI or while unrelated work is
-present.
+Release versions always use major **1**: `1.<minor>.<patch>`, without leading
+zeros, prerelease suffixes, or build metadata. Minor releases reset the patch
+number to zero. `make version-check`, local builds/installs, and tagged CI
+enforce the same version policy.
+
+| Publication command | Version change | Local validation |
+| --- | --- | --- |
+| `make release` | `1.2.3` → `1.2.4` | Complete `release-check` |
+| `make minor-release` | `1.2.3` → `1.3.0` | Complete `release-check` |
+| `make fast-release` | `1.2.3` → `1.2.4` | Skipped explicitly |
+| `make fast-minor-release` | `1.2.3` → `1.3.0` | Skipped explicitly |
+
+These operator-controlled targets require a clean `main`, the pinned
+`versioned` 1.0.36 tool, an up-to-date branch, and an absent next tag locally
+and at `origin`'s push destination. Install the tool explicitly with
+`go install github.com/greenpau/versioned/cmd/versioned@v1.0.36` if needed.
+Checked releases run `release-check` once before updating `VERSION`; fast
+releases skip only that local gate. All four create a version-only commit and
+an annotated tag, then atomically push only the release branch and that tag,
+even when `push.followTags` is enabled. **Tagged CI validation still runs for
+fast releases** and must pass before GitHub publication.
+
+`make release-git-check` checks patch-release prerequisites without changing
+`VERSION`, committing, tagging, or pushing. It inspects the remote and fetches
+the release branch. `RELEASE_BRANCH`, `RELEASE_REMOTE`, and `VERSIONED` can
+select a different branch, configured remote, or installed tool path. Only one
+push destination is supported; tagged CI still requires the release commit
+to belong to `main`. Partial version-update/commit targets refuse to bypass
+the complete workflow.
+
+Preflight and local-gate failures stop before the release's version update.
+If a commit, tag, or push fails later, inspect the local and remote state and
+recover that release before trying another increment; local changes are
+retained for review. Do not invoke publication targets from CI or while
+unrelated work is present.
+
+`make e2e-release` tests all four public targets with disposable repositories
+and local bare remotes, including failed gates, stale branches, rejected
+atomic pushes, and unrelated tags. Its controlled version-tool fixture keeps
+ordinary `make e2e` and CI independent of an installed release tool. To also
+qualify an installed pin, run:
+
+```bash
+versioned_path="$(command -v versioned)" && \
+TESTED_RELEASE_VERSIONED="$versioned_path" \
+  go test -v -count=1 -tags=integration ./scripts/releaseversion \
+  -run '^TestReleaseWorkflowTargets$'
+```
 
 Repository engineering contracts begin in [AGENTS.md](AGENTS.md) and route to
 the focused skills under `.codex/skills`.

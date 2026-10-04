@@ -23,6 +23,7 @@ The current Make surface is:
 | Command | Behavior and outputs |
 | --- | --- |
 | `make skills-check` | Check handbook metadata and the canonical route graph. |
+| `make version-check` | Enforce canonical `1.<minor>.<patch>` using the shared Go validator. |
 | `make linter` | Check Go formatting and run vet; do not rewrite source. |
 | `make run-tests` | Run uncached, verbose tests, one package at a time. |
 | `make run-race-tests` | Run uncached, verbose race tests, one package at a time. |
@@ -33,6 +34,7 @@ The current Make surface is:
 | `make test` / `make coverage` | Run bootstrap checks followed by one canonical self-test. |
 | `make e2e` | Build and exercise version provenance, controlled fixtures, offline rerender, failures, bounds, and benchmark/metadata cases. |
 | `make e2e-version` | Build and execute version scenarios in disposable checkouts and a local module proxy without network access. |
+| `make e2e-release` | Exercise public release targets and failures using disposable Git repositories, local bare remotes, and controlled tool/gate fixtures. |
 | `make e2e-browser` | Build and exercise local HTML reports in Chromium/WebKit with explicitly installed Node/Playwright tooling. |
 | `make e2e-go126-metadata` | Exercise Go 1.26 metadata with the already-built binary; explicitly skip on older Go. |
 | `make cross-build` | Compile Linux/Darwin amd64/arm64 and Windows amd64/386/arm64, including Windows test compilation. |
@@ -41,7 +43,9 @@ The current Make surface is:
 | `make mod-tidy` | Intentionally change module metadata and verify modules. |
 | `make clean` | Remove the explicit build, report, documentation, and fixture-output roots listed in Makefile. |
 | `make release-check` | Require a clean worktree and valid version, run CI, then check cleanliness. |
-| `make release` | Perform operator-requested version, commit, tag, and atomic remote publication. |
+| `make release` / `make minor-release` | Run the local release gate, then perform operator-requested patch/minor version, commit, tag, and atomic remote publication. |
+| `make fast-release` / `make fast-minor-release` | Explicitly skip only the local release gate; retain version/Git checks and tagged CI validation. |
+| `make release-git-check` | Check patch-release prerequisites and remote state without a version update, commit, tag, or push. |
 
 Use `gofmt -w <changed-go-files>` for intentional formatting; there is no
 separate `fmt` target. For focused work, select direct `go test ./pkg/<owner>`

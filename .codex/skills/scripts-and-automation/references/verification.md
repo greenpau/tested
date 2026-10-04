@@ -40,6 +40,10 @@ and collect the actual UTC build time and builder. Preserve argument boundaries
 through Go's linker-flag parsing; branch text must never execute as shell code.
 Let `go install` choose the destination from GOBIN/GOPATH and print that path.
 Ordinary builds must not implicitly install or publish.
+Keep `info`, `build`, `install`, `ci`, and release preflight using the shared
+`version-check` policy: major 1, canonical decimal components, and no suffixes.
+Use the same validator in tagged CI, including exact tag/version equality;
+avoid separate permissive shell validators that can drift from release rules.
 
 Use `make e2e-version` (also included by `make e2e`) to qualify the actual CLI's
 module metadata fallback, VCS-disabled builds, clean/dirty/detached builds,
@@ -50,6 +54,28 @@ disabled. Pass `-modcacherw` for this disposable cache so test cleanup can remov
 downloaded module directories. These checks exercise built binaries and release
 stamps; they do not replace GoReleaser archive/package preflight or qualify
 installation on an untested native host.
+
+Use `make e2e-release` (included by `make e2e`) for release automation changes.
+The [release tests](../../../../scripts/releaseversion/workflow_integration_test.go)
+invoke the actual public Make targets with real Git and local bare remotes.
+Keep version-tool and quality-gate failure injection inside disposable fixtures;
+ordinary CI must not install a publishing dependency or recursively run itself.
+Optionally select an already installed `versioned` 1.0.36 using
+`TESTED_RELEASE_VERSIONED=/path/to/versioned` when running
+`go test -v -count=1 -tags=integration ./scripts/releaseversion -run '^TestReleaseWorkflowTargets$'`.
+Distinguish controlled-tool workflow evidence from actual pinned-tool results.
+
+Cover all four targets, exact version-only commits and annotated tags, checked
+gate execution once versus fast gate omission, truthful commit test status,
+unrelated tags under `push.followTags`, and separate fetch/push destinations.
+Require dirty/staged/untracked work, wrong/detached branches, invalid major or
+version syntax, overflow, missing/unreachable/multiple remotes, existing tags,
+stale/diverged branches, failed or unexpected tool output, failed/dirty gates,
+and changed HEAD to stop later mutation. Test atomic rejection with a real
+remote hook, retry recovery, commit-hook failure, lock ownership, and refusal
+of partial targets. Pair these with unit tests for canonical version parsing,
+uint64 bounds, patch/minor increments, and exact tag matching. These checks do
+not publish remotely or replace tagged CI's archive/native-host preflight.
 
 Cross-build the CLI for each supported target without running the foreign
 binary. At minimum, cover Linux, Darwin, and Windows on both amd64 and arm64;
