@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/greenpau/tested/pkg/result"
@@ -54,10 +55,21 @@ func (r *Renderer) RenderTestOutputHTML(writer io.Writer, input Input) error {
 	if r.assets == nil || r.assets.testOutputTemplate == nil {
 		return errors.New("render test HTML: embedded assets are unavailable")
 	}
+	view := r.buildView(input)
+	// Select the slowest occurrences by duration, then present the HTML table
+	// by package. Console summaries retain their duration ranking.
+	sort.SliceStable(view.Slowest, func(i, j int) bool {
+		return view.Slowest[i].Package < view.Slowest[j].Package
+	})
+	if view.Coverage != nil {
+		sort.SliceStable(view.Coverage.Files, func(i, j int) bool {
+			return view.Coverage.Files[i].Package < view.Coverage.Files[j].Package
+		})
+	}
 	if err := r.assets.testOutputTemplate.ExecuteTemplate(
 		writer,
 		"test_output.html",
-		r.buildView(input),
+		view,
 	); err != nil {
 		return fmt.Errorf("render test HTML: %w", err)
 	}

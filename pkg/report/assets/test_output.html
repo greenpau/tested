@@ -73,9 +73,12 @@
 
 <div class="toolbar-wrap" id="report-controls" hidden>
 <div class="toolbar" role="search" aria-label="Filter test results">
-<label class="control">Search results <input id="search" type="search" placeholder="Package, test, status, or output" autocomplete="off"></label>
+<label class="control text-filter">Package <input id="filter-package" type="search" placeholder="Filter packages" autocomplete="off"></label>
+<label class="control text-filter">Test name <input id="filter-test" type="search" placeholder="Filter test names" autocomplete="off"></label>
+<label class="control text-filter">Output <input id="filter-output" type="search" placeholder="Filter output text" autocomplete="off"></label>
 <div class="control"><label for="status">Status</label><select id="status"><option value="">All statuses</option><option value="failed">Failed</option><option value="incomplete">Incomplete</option><option value="skipped">Skipped</option><option value="passed">Passed</option><option value="unknown">Unknown</option></select></div>
 <fieldset class="view-control"><legend>View</legend><div class="view-options"><label><input type="radio" name="test-view" value="flat" checked> Flat</label><label><input type="radio" name="test-view" value="nested"> Nested</label></div></fieldset>
+<button id="clear-filters" type="button">Clear all filters</button>
 </div>
 <div id="tree-controls" class="tree-controls" hidden><button id="expand-tests" type="button">Expand all</button><button id="collapse-tests" type="button">Collapse all</button><span class="meta">Subtests follow their recorded parent occurrence. Filters reveal matching branches.</span></div>
 <p id="match-count" class="meta" aria-live="polite"></p>
@@ -86,7 +89,7 @@
 <div class="section-title"><h2 id="packages-heading">Packages and test occurrences</h2><p>Passing output is collapsed when JavaScript is enabled; failed and incomplete output stays open.</p></div>
 {{if .Packages}}
 {{range .Packages}}
-<article class="package-card filterable" data-status="{{.StatusClass}}" data-search="{{.Name}} {{.Status}}">
+<article class="package-card filterable" data-status="{{.StatusClass}}" data-package="{{.Name}}">
 <header class="package-header">
 <div class="heading">
 <div><h3>{{.Name}}</h3><p>{{if .DurationKnown}}duration {{.Duration}}{{if .DurationSource}} ({{.DurationSource}}){{end}}{{else}}duration unavailable{{if .DurationSource}} ({{.DurationSource}}){{end}}{{end}}{{if .Cached}} · cached{{end}}{{if .NoTests}} · no tests{{end}}{{if .FailedBuild}} · failed build {{.FailedBuild}}{{end}}{{if .IncompleteReason}} · {{.IncompleteReason}}{{end}}</p></div>
@@ -94,7 +97,7 @@
 </div>
 </header>
 <div class="package-body">
-{{if or .Output .OutputTruncated}}<details open data-collapse><summary>Package output</summary>{{if .Output}}<pre>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes. Inspect test_output.jsonl for complete evidence.</p>{{end}}</details>{{end}}
+{{if or .Output .OutputTruncated}}<details open data-collapse><summary>Package output</summary>{{if .Output}}<pre data-filter-output>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes. Inspect test_output.jsonl for complete evidence.</p>{{end}}</details>{{end}}
 {{if or .Attributes .Artifacts}}<details open data-collapse><summary>Package metadata</summary>
 {{if .Attributes}}<h4>Attributes</h4><div class="table-scroll"><table><thead><tr><th scope="col">Record</th><th scope="col">Key</th><th scope="col">Value</th></tr></thead><tbody>
 {{range .Attributes}}<tr><td>{{.Sequence}}{{if .Line}} (line {{.Line}}){{end}}</td><td><code>{{.Key}}</code></td><td>{{.Value}}</td></tr>{{end}}
@@ -107,22 +110,27 @@
 </div>
 {{if .Tests}}<div class="test-list">
 {{range .Tests}}
-<article class="test-row filterable" id="{{.HTMLID}}" data-parent="{{.ParentHTMLID}}" data-status="{{.StatusClass}}" data-search="{{.Package}} {{.Label}} {{.Status}}">
+<article class="test-row filterable" id="{{.HTMLID}}" data-parent="{{.ParentHTMLID}}" data-status="{{.StatusClass}}" data-package="{{.Package}}" data-test="{{.Name}}">
 <div class="test-content">
-<div class="heading">
-<div><h4 id="{{.HTMLID}}-name">{{.Label}}</h4><p class="meta">occurrence {{.Ordinal}}{{if .Kind}} · {{.Kind}}{{end}}{{if .DurationKnown}} · {{.Duration}}{{if .DurationSource}} ({{.DurationSource}}){{end}}{{else}} · duration unavailable{{if .DurationSource}} ({{.DurationSource}}){{end}}{{end}}{{if .IncompleteReason}} · {{.IncompleteReason}}{{end}}</p></div>
+<div class="test-heading">
+<h4 id="{{.HTMLID}}-name">{{.Label}}</h4>
+<span class="test-duration"{{if not .DurationKnown}} title="Duration unavailable" aria-label="Duration unavailable"{{end}}>{{if .DurationKnown}}{{.Duration}}{{else}}—{{end}}</span>
 <strong class="status-pill {{.StatusClass}}">{{.Status}}</strong>
 </div>
-{{if .Output}}<details open{{if not (or (eq .StatusClass "failed") (eq .StatusClass "incomplete"))}} data-collapse{{end}}><summary>Test output</summary><pre>{{.Output}}</pre></details>{{end}}
-{{if .OutputTruncated}}<p class="notice">Output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes. Inspect test_output.jsonl for complete evidence.</p>{{end}}
-{{if or .Attributes .Artifacts}}<details open data-collapse><summary>Occurrence metadata</summary>
+{{if .IncompleteReason}}<p class="test-reason meta">{{.IncompleteReason}}</p>{{end}}
+<details class="test-details" open{{if not (or (eq .StatusClass "failed") (eq .StatusClass "incomplete"))}} data-collapse{{end}}><summary>{{if .Output}}Output{{else}}Details{{end}}</summary>
+<p class="meta">occurrence {{.Ordinal}}{{if .Kind}} · {{.Kind}}{{end}}{{if .DurationKnown}} · {{.Duration}}{{else}} · duration unavailable{{end}}{{if .DurationSource}} ({{.DurationSource}}){{end}}</p>
+{{if .Output}}<pre data-filter-output>{{.Output}}</pre>{{end}}
+{{if or .Attributes .Artifacts}}<h5>Occurrence metadata</h5>
 {{if .Attributes}}<h5>Attributes</h5><div class="table-scroll"><table><thead><tr><th scope="col">Record</th><th scope="col">Key</th><th scope="col">Value</th></tr></thead><tbody>
 {{range .Attributes}}<tr><td>{{.Sequence}}{{if .Line}} (line {{.Line}}){{end}}</td><td><code>{{.Key}}</code></td><td>{{.Value}}</td></tr>{{end}}
 </tbody></table></div>{{end}}
 {{if .Artifacts}}<h5>Artifact paths</h5><div class="table-scroll"><table><thead><tr><th scope="col">Record</th><th scope="col">Path (informational only)</th></tr></thead><tbody>
 {{range .Artifacts}}<tr><td>{{.Sequence}}{{if .Line}} (line {{.Line}}){{end}}</td><td><code>{{.Path}}</code></td></tr>{{end}}
 </tbody></table></div>{{end}}
-</details>{{end}}
+{{end}}
+</details>
+{{if .OutputTruncated}}<p class="notice">Output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes. Inspect test_output.jsonl for complete evidence.</p>{{end}}
 </div>
 </article>
 {{end}}
@@ -136,9 +144,9 @@
 <section class="report-section" aria-labelledby="builds-heading">
 <div class="section-title"><h2 id="builds-heading">Build events</h2><p>Package compilation evidence emitted by the Go toolchain.</p></div>
 {{range .Builds}}
-<article class="build-card filterable" data-status="{{.StatusClass}}" data-search="{{.ImportPath}} {{.Status}}">
+<article class="build-card filterable" data-status="{{.StatusClass}}" data-package="{{.ImportPath}}">
 <header class="build-header"><div class="heading"><h3>{{.ImportPath}}</h3><strong class="status-pill {{.StatusClass}}">{{.Status}}</strong></div></header>
-<div class="build-body">{{if .Output}}<pre>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Build output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes.</p>{{end}}</div>
+<div class="build-body">{{if .Output}}<pre data-filter-output>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Build output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes.</p>{{end}}</div>
 </article>
 {{end}}</section>
 {{end}}
@@ -147,7 +155,7 @@
 <section class="section-card filterable" data-status="unknown" aria-labelledby="unattributed-heading">
 <header class="section-header"><h2 id="unattributed-heading">Unattributed test output</h2><p>Output that could not be assigned to a package or occurrence.</p></header>
 <div class="section-body">
-{{if .Output}}<pre>{{.Output}}</pre>{{else}}<p class="empty">No output bytes were retained in this projection.</p>{{end}}
+{{if .Output}}<pre data-filter-output>{{.Output}}</pre>{{else}}<p class="empty">No output bytes were retained in this projection.</p>{{end}}
 <p class="meta">Retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes.</p>
 {{if .OutputTruncated}}<p class="notice">Unattributed output truncated. Inspect test_output.jsonl for complete evidence.</p>{{end}}
 </div>
@@ -158,9 +166,9 @@
 <section class="report-section" aria-labelledby="diagnostics-heading">
 <div class="section-title"><h2 id="diagnostics-heading">Integrity diagnostics</h2><p>Retained {{.DiagnosticsRetained}} of {{.DiagnosticCount}} diagnostics{{if .DiagnosticsTruncated}}; the diagnostic list is truncated{{end}}.</p></div>
 {{range .Diagnostics}}
-<article class="build-card filterable" data-status="incomplete" data-search="{{.Kind}} {{.Message}}">
+<article class="build-card filterable" data-status="incomplete">
 <header class="build-header"><div class="heading"><h3>{{.Kind}} at record {{.Sequence}}</h3><strong class="status-pill incomplete">incomplete</strong></div></header>
-<div class="build-body"><p>{{.Message}}</p>{{if .Preview}}<pre>{{.Preview}}</pre>{{end}}<p class="meta">line {{.Line}} · {{.Bytes}} bytes{{if .Truncated}} · preview truncated{{end}}</p></div>
+<div class="build-body"><p data-filter-output>{{.Message}}</p>{{if .Preview}}<pre data-filter-output>{{.Preview}}</pre>{{end}}<p class="meta">line {{.Line}} · {{.Bytes}} bytes{{if .Truncated}} · preview truncated{{end}}</p></div>
 </article>
 {{else}}<div class="section-card"><div class="section-body"><p class="empty">No diagnostic details were retained.</p></div></div>{{end}}
 </section>
@@ -169,8 +177,8 @@
 {{with .Coverage}}
 <section class="section-card" aria-labelledby="coverage-heading">
 <header class="section-header"><h2 id="coverage-heading">Weighted coverage by file</h2><p>{{.Covered}} of {{.Statements}} weighted statements covered · {{.Percentage}} · mode {{.Mode}}.</p></header>
-<div class="table-scroll">{{if .Files}}<table><thead><tr><th scope="col">File</th><th scope="col">Covered statements</th><th scope="col">Total statements</th><th scope="col">Coverage</th></tr></thead><tbody>
-{{range .Files}}<tr><td class="mono">{{.Name}}</td><td class="tabular">{{.Covered}}</td><td class="tabular">{{.Statements}}</td><td class="tabular">{{.Percentage}}</td></tr>{{end}}
+<div class="table-scroll">{{if .Files}}<table class="sortable-table" aria-labelledby="coverage-heading"><thead><tr><th scope="col" data-sort="text" aria-sort="ascending">Package</th><th scope="col" data-sort="text">File</th><th scope="col" data-sort="number">Covered statements</th><th scope="col" data-sort="number">Total statements</th><th scope="col" data-sort="ratio">Coverage</th></tr></thead><tbody>
+{{$previousPackage := ""}}{{range $index, $file := .Files}}<tr><td class="mono"><span data-package-label{{if and $index (eq .Package $previousPackage)}} class="sr-only"{{end}}>{{.Package}}</span></td><td class="mono" title="{{.Name}}">{{.File}}</td><td class="tabular" data-sort-value="{{.Covered}}">{{.Covered}}</td><td class="tabular" data-sort-value="{{.Statements}}">{{.Statements}}</td><td class="tabular" data-sort-covered="{{.Covered}}" data-sort-total="{{.Statements}}">{{.Percentage}}</td></tr>{{$previousPackage = .Package}}{{end}}
 </tbody></table>{{else}}<div class="section-body"><p class="empty">The profile contains no source blocks.</p></div>{{end}}</div>
 </section>
 {{end}}
@@ -178,8 +186,8 @@
 {{if .Slowest}}
 <section class="section-card" aria-labelledby="slowest-heading">
 <header class="section-header"><h2 id="slowest-heading">Slowest occurrences</h2><p>Longest measured or estimated test durations retained in this report.</p></header>
-<div class="table-scroll"><table><thead><tr><th scope="col">Package</th><th scope="col">Occurrence</th><th scope="col">Duration</th><th scope="col">Source</th><th scope="col">Status</th></tr></thead><tbody>
-{{range .Slowest}}<tr><td class="mono">{{.Package}}</td><td class="mono">{{.Label}}</td><td class="tabular">{{.Duration}}</td><td>{{.DurationSource}}</td><td><span class="status-pill {{.StatusClass}}">{{.Status}}</span></td></tr>{{end}}
+<div class="table-scroll"><table class="sortable-table" aria-labelledby="slowest-heading"><thead><tr><th scope="col" data-sort="text" aria-sort="ascending">Package</th><th scope="col" data-sort="text">Occurrence</th><th scope="col" data-sort="number">Duration</th><th scope="col" data-sort="text">Source</th><th scope="col" data-sort="text">Status</th></tr></thead><tbody>
+{{$previousPackage := ""}}{{range $index, $slow := .Slowest}}<tr><td class="mono"><span data-package-label{{if and $index (eq .Package $previousPackage)}} class="sr-only"{{end}}>{{.Package}}</span></td><td class="mono">{{.Label}}</td><td class="tabular" data-sort-value="{{.DurationNanos}}">{{.Duration}}</td><td>{{.DurationSource}}</td><td><span class="status-pill {{.StatusClass}}">{{.Status}}</span></td></tr>{{$previousPackage = .Package}}{{end}}
 </tbody></table></div></section>
 {{end}}
 </main>

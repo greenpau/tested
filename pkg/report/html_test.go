@@ -17,11 +17,320 @@ package report
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/greenpau/tested/pkg/coverage"
 	"github.com/greenpau/tested/pkg/result"
 )
+
+func TestCoverageTableSortValuesAndRedactedPaths(t *testing.T) {
+	renderer, err := New(Options{RedactPatterns: []string{`secret/value`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const covered uint64 = 9007199254740993
+	const statements uint64 = covered + 100
+	for _, tc := range []struct {
+		name, pkg, file string
+	}{
+		{name: "pkg/secret/value.go", pkg: "pkg", file: "[REDACTED].go"},
+		{name: "root.go", pkg: ".", file: "root.go"},
+		{name: "/root.go", pkg: "/", file: "root.go"},
+		{name: `C:\pkg\file.go`, pkg: `C:\pkg`, file: "file.go"},
+		{name: `pkg/<script>&".go`, pkg: "pkg", file: `<script>&".go`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			totals := coverage.Totals{Covered: covered, Statements: statements}
+			profile := &coverage.Profile{Mode: coverage.ModeSet, Total: totals,
+				Files: []coverage.FileSummary{{Name: tc.name, Totals: totals}}}
+			file := renderer.buildCoverageView(profile).Files[0]
+			if file.Package != tc.pkg || file.File != tc.file {
+				t.Fatalf("package/file = %q/%q, want %q/%q", file.Package, file.File, tc.pkg, tc.file)
+			}
+			var output bytes.Buffer
+			if err := renderer.RenderTestOutputHTML(&output, Input{Coverage: profile}); err != nil {
+				t.Fatal(err)
+			}
+			page := output.String()
+			for _, want := range []string{
+				`data-sort="text" aria-sort="ascending">Package</th>`,
+				fmt.Sprintf(`data-sort-value="%d"`, covered),
+				fmt.Sprintf(`data-sort-covered="%d" data-sort-total="%d"`, covered, statements),
+				`data-package-label>` + html.EscapeString(tc.pkg),
+				html.EscapeString(tc.file) + `</td>`,
+			} {
+				if !strings.Contains(page, want) {
+					t.Errorf("missing exact, escaped sorting data %q", want)
+				}
+			}
+			if strings.Contains(page, "secret/value") || strings.Contains(page, `<script>&"`) {
+				t.Fatal("coverage path bypassed redaction or escaping")
+			}
+		})
+	}
+}
+
+func TestHTMLCompactRowsPreserveEvidence(t *testing.T) {
+	renderer, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		status result.Status
+		known  bool
+	}{
+		{name: "passed", status: result.StatusPassed, known: true},
+		{name: "failed", status: result.StatusFailed, known: true},
+		{name: "incomplete duration unavailable", status: result.StatusIncomplete},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			test := result.TestOccurrence{
+				ID:   result.OccurrenceID{Package: "example.com/pkg", Name: "TestCompact", Ordinal: 2},
+				Kind: result.TestKindTest, Status: tc.status,
+				Output:          []result.Output{{Text: "retained output"}},
+				OutputTruncated: true, OutputBytes: 200, OutputRetainedBytes: 15,
+				Attributes: []result.Attribute{{Key: "owner", Value: "team"}},
+				Artifacts:  []result.Artifact{{Path: "/tmp/evidence"}},
+			}
+			if tc.known {
+				test.Elapsed = time.Millisecond
+				test.DurationSource = result.DurationGoElapsed
+			} else {
+				test.IncompleteReason = "missing terminal event"
+			}
+			input := Input{Result: result.Result{Finalized: true, Packages: []result.Package{{
+				Name: test.ID.Package, Tests: []result.TestOccurrence{test},
+			}}}}
+			var output bytes.Buffer
+			if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+				t.Fatal(err)
+			}
+			_, row, found := strings.Cut(output.String(), `<div class="test-heading">`)
+			if !found {
+				t.Fatal("missing test heading")
+			}
+			heading, rest, _ := strings.Cut(row, "</div>")
+			if !strings.Contains(heading, "TestCompact [attempt 2]") {
+				t.Fatal("compact heading lost repeated occurrence identity")
+			}
+			for _, forbidden := range []string{test.ID.Package, "occurrence", "go_elapsed"} {
+				if strings.Contains(heading, forbidden) {
+					t.Errorf("compact heading contains redundant %q", forbidden)
+				}
+			}
+			panel, afterPanel, _ := strings.Cut(rest, "</details>")
+			for _, evidence := range []string{"occurrence 2", "retained output", "owner", "team", "/tmp/evidence"} {
+				if !strings.Contains(panel, evidence) {
+					t.Errorf("details lost %q", evidence)
+				}
+			}
+			if strings.Contains(panel, "data-collapse") != (tc.status == result.StatusPassed) {
+				t.Error("failed/incomplete details must stay open; passing details should collapse")
+			}
+			if !strings.HasPrefix(strings.TrimSpace(afterPanel), `<p class="notice">Output truncated:`) {
+				t.Error("retention notice must remain outside collapsed details")
+			}
+			if tc.known {
+				if !strings.Contains(heading, ">1ms</span>") || !strings.Contains(panel, "go_elapsed") {
+					t.Error("duration or its provenance was lost")
+				}
+			} else if !strings.Contains(heading, `aria-label="Duration unavailable"`) ||
+				!strings.Contains(panel, "duration unavailable") || !strings.Contains(rest, "missing terminal event") {
+				t.Error("unknown duration or incomplete reason was lost")
+			}
+		})
+	}
+}
+
+func TestSlowestPackageContextAndDefaultOrder(t *testing.T) {
+	input := Input{Result: result.Result{Finalized: true}}
+	for _, pkg := range []string{"example/p", "example/q"} {
+		p := result.Package{Name: pkg}
+		for i, owner := range []string{"example/p", "example/q", "example/p", "example/p"} {
+			if owner == pkg {
+				p.Tests = append(p.Tests, result.TestOccurrence{
+					ID:      result.OccurrenceID{Package: pkg, Name: fmt.Sprintf("TestRank%d", i), Ordinal: 1},
+					Elapsed: time.Duration(4-i) * time.Second,
+				})
+			}
+		}
+		input.Result.Packages = append(input.Result.Packages, p)
+	}
+	for _, format := range []string{"html", "plain", "markdown"} {
+		t.Run(format, func(t *testing.T) {
+			var output bytes.Buffer
+			if format == "html" {
+				renderer, err := New(Options{Slowest: 4})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				console, err := NewConsole(ConsoleOptions{Writer: &output, Format: ConsoleFormat(format), Slowest: 4})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := console.Final(input); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, slowest, found := strings.Cut(output.String(), "Slowest occurrences")
+			if !found {
+				t.Fatal("missing slowest occurrences")
+			}
+			if format == "html" {
+				if strings.Count(slowest, `<span data-package-label>example/p</span>`) != 1 ||
+					strings.Count(slowest, `<span data-package-label class="sr-only">example/p</span>`) != 2 {
+					t.Fatal("HTML repeats package names or loses accessible context")
+				}
+			} else if strings.Count(slowest, "example/p") != 2 || strings.Count(slowest, "example/q") != 1 {
+				t.Fatalf("package grouping changed: %s", slowest)
+			}
+			order := []int{0, 1, 2, 3}
+			if format == "html" {
+				order = []int{0, 2, 3, 1}
+			}
+			for _, i := range order {
+				_, rest, found := strings.Cut(slowest, fmt.Sprintf("TestRank%d", i))
+				if !found {
+					t.Fatalf("unexpected %s ordering at %d: %s", format, i, slowest)
+				}
+				slowest = rest
+			}
+		})
+	}
+}
+
+func TestHTMLSlowestLimitSelectsDurationsBeforeOrderingPackages(t *testing.T) {
+	input := Input{Result: result.Result{Finalized: true}}
+	for _, pkg := range []struct {
+		name, test string
+		duration   time.Duration
+		ordinals   []uint64
+	}{
+		{"example/z", "TestRepeated", 9 * time.Second, []uint64{2, 1}},
+		{"example/a", "TestFast", time.Second, []uint64{1}},
+		{"example/b", "TestMiddle", 8 * time.Second, []uint64{1}},
+	} {
+		p := result.Package{Name: pkg.name, Status: result.StatusPassed}
+		for _, ordinal := range pkg.ordinals {
+			p.Tests = append(p.Tests, result.TestOccurrence{
+				ID:      result.OccurrenceID{Package: pkg.name, Name: pkg.test, Ordinal: ordinal},
+				Elapsed: pkg.duration, DurationSource: result.DurationGoElapsed, Status: result.StatusPassed,
+			})
+		}
+		input.Result.Packages = append(input.Result.Packages, p)
+	}
+	for _, tc := range []struct {
+		limit int
+		want  []string
+	}{
+		{limit: 0},
+		{limit: 1, want: []string{"TestRepeated"}},
+		{limit: 3, want: []string{"TestMiddle", "TestRepeated", "TestRepeated [attempt 2]"}},
+		{limit: 10, want: []string{"TestFast", "TestMiddle", "TestRepeated", "TestRepeated [attempt 2]"}},
+	} {
+		t.Run(fmt.Sprintf("limit=%d", tc.limit), func(t *testing.T) {
+			renderer, err := New(Options{Slowest: tc.limit})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var output bytes.Buffer
+			if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+				t.Fatal(err)
+			}
+			_, section, found := strings.Cut(output.String(), `<h2 id="slowest-heading">`)
+			if len(tc.want) == 0 {
+				if found {
+					t.Fatal("disabled slowest list is still rendered")
+				}
+				return
+			}
+			_, body, _ := strings.Cut(section, "<tbody>")
+			body, _, _ = strings.Cut(body, "</tbody>")
+			if got := strings.Count(body, "<tr>"); got != len(tc.want) {
+				t.Fatalf("slowest rows = %d, want %d", got, len(tc.want))
+			}
+			for _, name := range tc.want {
+				_, rest, found := strings.Cut(body, `<td class="mono">`+name+`</td>`)
+				if !found {
+					t.Fatalf("missing or out-of-order occurrence %q in %s", name, body)
+				}
+				body = rest
+			}
+		})
+	}
+	if input.Result.Packages[0].Name != "example/z" || input.Result.Packages[0].Tests[0].ID.Ordinal != 2 {
+		t.Fatal("HTML sorting mutated source package or occurrence order")
+	}
+}
+
+func TestHTMLFilterFieldsAreScopedRedactedAndEscaped(t *testing.T) {
+	renderer, err := New(Options{RedactPatterns: []string{"secret-[a-z]+"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, name := `pkg/secret-package"<&`, `Test/secret-name"<&`
+	input := Input{Result: result.Result{
+		Finalized: true,
+		Packages: []result.Package{{
+			Name:   pkg,
+			Output: []result.Output{{Text: "package secret-log <&>"}},
+			Tests: []result.TestOccurrence{{
+				ID:     result.OccurrenceID{Package: pkg, Name: name, Ordinal: 2},
+				Output: []result.Output{{Text: "test secret-log <&>"}},
+			}},
+		}},
+		Builds: []result.Build{{
+			ImportPath: `build/secret-path"<&`,
+			Output:     []result.Output{{Text: "build secret-log <&>"}},
+		}},
+		UnattributedOutput: []result.Output{{Text: "unattributed secret-log <&>"}},
+		Diagnostics: []result.Diagnostic{{
+			Message: "diagnostic secret-log <&>", Preview: "preview secret-log <&>",
+		}},
+	}}
+	var output bytes.Buffer
+	if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+		t.Fatal(err)
+	}
+	page := output.String()
+	for _, tc := range []struct {
+		field string
+		value string
+		count int
+	}{
+		{field: "package", value: `pkg/[REDACTED]"<&`, count: 2},
+		{field: "test", value: `Test/[REDACTED]"<&`, count: 1},
+		{field: "package", value: `build/[REDACTED]"<&`, count: 1},
+	} {
+		attribute := `data-` + tc.field + `="` + html.EscapeString(tc.value) + `"`
+		if got := strings.Count(page, attribute); got != tc.count {
+			t.Errorf("%s occurs %d times, want %d", attribute, got, tc.count)
+		}
+	}
+	for _, scope := range []string{"package", "test", "build", "unattributed", "diagnostic", "preview"} {
+		tag := "pre"
+		if scope == "diagnostic" {
+			tag = "p"
+		}
+		want := "<" + tag + " data-filter-output>" + scope + " [REDACTED] &lt;&amp;&gt;</" + tag + ">"
+		if !strings.Contains(page, want) {
+			t.Errorf("missing escaped, scoped output %q", want)
+		}
+	}
+	for _, forbidden := range []string{"secret-", "data-search=", `data-test="Test/[REDACTED]&#34;&lt;&amp; [attempt 2]"`} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("HTML contains forbidden filter data %q", forbidden)
+		}
+	}
+}
 
 func TestHTMLHierarchyUsesRecordedOccurrenceIdentity(t *testing.T) {
 	id := func(name string, ordinal uint64) result.OccurrenceID {

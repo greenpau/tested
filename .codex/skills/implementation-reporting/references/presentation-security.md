@@ -29,6 +29,20 @@ already captured stderr with safe scope prefixes. Escape HTML delimiters as
 well as Markdown syntax in live Markdown logs. Do not copy accumulated
 transcripts for each event or infer test states in the renderer.
 
+Emit a package context heading once per contiguous group of live events;
+omit the package path from individual test and log prefixes. Compare original
+package identities before redaction, and reintroduce context on package switches
+or after displayed stages, stderr, unattributed evidence, or write failures.
+Do not change context or emit headings for suppressed/empty events. Write each
+context heading together with its event under the console lock and within the
+existing detail/line budgets. Preserve build scope, test names, occurrence
+ordinals, failure propagation, and full raw evidence. Test interleaved packages,
+redaction collisions, and retries after possibly partial writes.
+
+Show slowest-list package context once per consecutive group in plain output;
+use a continuation marker for repeated package cells in Markdown. Preserve
+global duration ranking rather than sorting the list into package groups.
+
 Bound live details independently from evidence: a 4 MiB transcript budget,
 4 KiB display lines, and at most a 16 KiB input preview per log event/read.
 Stop formatting a multiline preview once it reaches 64 KiB, allowing only the

@@ -142,6 +142,8 @@ type coverageView struct {
 
 type coverageFileView struct {
 	Name       string
+	Package    string
+	File       string
 	Statements uint64
 	Covered    uint64
 	Percentage string
@@ -375,8 +377,20 @@ func (r *Renderer) buildCoverageView(profile *coverage.Profile) *coverageView {
 	})
 	for _, file := range files {
 		filePercentage, fileAvailable := formatCoveragePercentage(file.Totals)
+		// Split only the redacted presentation: a rule spanning a path separator
+		// must not be bypassed by redacting its directory and basename separately.
+		name := r.redact(file.Name)
+		pkg, base := ".", name
+		if separator := strings.LastIndexAny(name, `/\`); separator >= 0 {
+			pkg, base = name[:separator], name[separator+1:]
+			if pkg == "" {
+				pkg = name[:1]
+			}
+		}
 		view.Files = append(view.Files, coverageFileView{
-			Name:       r.redact(file.Name),
+			Name:       name,
+			Package:    pkg,
+			File:       base,
 			Statements: file.Totals.Statements,
 			Covered:    file.Totals.Covered,
 			Percentage: filePercentage,

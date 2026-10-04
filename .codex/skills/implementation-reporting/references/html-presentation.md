@@ -34,7 +34,44 @@ translucent white borders.
   their native details while hiding filter controls. Print the index catalog
   as rendered and the currently selected Go coverage file with its legend.
 
+## Sort test-report summary tables
+
+Default Slowest occurrences and Weighted coverage by file to Package ascending.
+Keep slowest selection based on duration before sorting the HTML presentation;
+console summaries retain their duration ranking. Verify limits of zero, one,
+and several occurrences, including duration ties and repeated attempts across
+packages. Package ordering must not change the selected occurrences or mutate
+the source snapshot. Split coverage paths into Package and File only after
+redacting the complete path, retaining the full redacted path as the file title.
+Use `.` for paths without a directory.
+
+Enhance headers with native sort buttons, direction indicators, one active
+`aria-sort`, and a polite announcement. Toggle direction on repeated activation;
+start a newly selected column ascending. Compare text with a fixed English,
+case-insensitive natural collator. Compare durations as exact nanoseconds and
+statement counts as exact integers; compare coverage ratios by exact cross
+multiplication, never formatted percentages. Keep unavailable coverage last in
+both directions and equal values in their initial visible order. Reuse row
+nodes and recompute visible package labels after every sort: show the package
+once per consecutive group, retaining hidden text in repeated cells for
+assistive technology. Keep the two tables independent and preserve sorting
+through filter clearing, view switching, and printing. Keep numeric cells on
+one line and contain horizontal scrolling within each table. Without JavaScript,
+render static tables in lexical package order with no inactive sort buttons.
+
 ## Preserve test hierarchy across view changes
+
+Keep ordinary collapsed test rows compact: name, duration, status, and an
+Output/Details disclosure on one line when space permits, with approximately
+40px or less height for short desktop names. Keep package identity in the
+package heading and searchable data, without adding it to each test heading.
+Place occurrence kind/ordinal, duration provenance, retained output, attributes,
+and artifact paths inside one native details panel. Keep failed/incomplete
+panels open initially and incomplete reasons/truncation notices outside the
+collapsible panel. Show unavailable duration distinctly from measured zero.
+Let long names wrap at narrow widths. Put a compact branch disclosure beside
+the heading, with accessible action/count and parent context; preserve native
+details keyboard behavior and the expanded no-script/print fallbacks.
 
 Keep Flat as the initial test-report view and expose a keyboard-accessible
 Flat/Nested radio group after the embedded script initializes. Resolve nested
@@ -48,12 +85,24 @@ Inspect [HTML hierarchy projection](../../../../pkg/report/html.go) and
 
 Move the existing occurrence elements when switching layouts; preserve their
 order, output, metadata, open details, filters, and branch-collapse state.
-Keep indentation bounded for deep hierarchies. Match each row's own evidence
-and package identity, then reveal its ancestors as context in Nested view.
+Keep indentation bounded for deep hierarchies. Expose separate labeled Package,
+Test name, and Output search fields. Combine their case-insensitive literal
+substring matches with Status using AND; ignore surrounding query whitespace.
+Use redacted package/test identities, including build import paths and full
+test names without attempt suffixes. Search retained output plus diagnostic
+messages/previews, excluding presentation labels and metadata. Cache each row's
+own output before nesting, and restrict package output to its package body so
+descendants cannot create false matches. Rows without a package or test
+identity cannot directly match a nonempty filter for that field.
+
+Reveal matching tests' packages and, in Nested view, ancestors as context.
 Count direct matches independently of context rows and collapse state. Active
 filters must reveal matching branches, temporarily disable collapse controls,
 and restore the user's branch state when cleared. Keep build and integrity
-evidence filterable in both layouts.
+evidence filterable in both layouts. Clear all filters must reset all three
+text fields and Status together without changing the view, saved branch state,
+or open details. Let the expanded mobile toolbar scroll with the page so it
+does not obscure results on narrow screens.
 
 Keep behavior offline and self-contained, with no storage or network access.
 Without JavaScript, hide inactive controls and retain the flat report with
@@ -143,8 +192,10 @@ The repository's Go tests check generated markup, CSS, scripts, security, and
 selected-toolchain decoration. They do not establish browser layout or actual
 keyboard/print interactions. The [browser suite](../../../../scripts/browser/)
 and `make e2e-browser` exercise generated `file://` test reports in Chromium and
-WebKit, including repeated and redacted identities, filters, missing parents,
-incomplete/build-only/empty evidence, keyboard focus, print, mobile/light/dark
+WebKit, including compact-row height and expandable evidence, repeated and
+redacted identities, natural/exact numeric table sorting, slowest selection
+limits, independent and combined filters, field isolation, clear/reset state,
+missing parents, incomplete/build-only/empty evidence, keyboard focus, print, mobile/light/dark
 layouts, no-script fallback, and deterministic offline rerendering. Inspect its
 screenshots as well as assertions; it does not qualify the coverage explorer or
 other browser engines. Keep previews disposable and report unverified modes

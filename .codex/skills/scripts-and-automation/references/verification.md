@@ -87,9 +87,20 @@ for missing parents, incomplete runs, build-only cases, and empty streams.
 Assert the expected nonzero CLI results instead of masking them. Resolve the
 test-owned temporary root through its real path on macOS before giving it to
 the managed artifact writer, and remove only that owned directory on teardown.
-Check exact offline rerendering, DOM identity, filtering, keyboard controls,
-print restoration, narrow/light/dark layouts, security, and the no-script
-fallback. Keep screenshots, PDFs, and failure traces in the ignored
+Check exact offline rerendering, DOM identity, independent package/test/output
+filters, their intersection with status, clear-all state restoration, compact
+row heights, expandable output/metadata, keyboard controls, print restoration,
+narrow/light/dark layouts, security, and the no-script fallback. Exercise both
+summary tables' default package ordering, natural text ordering, exact duration
+and statement sorting (including integers beyond JavaScript's safe-number
+range), and coverage ratios that display the same rounded percentage. Check
+both directions, unavailable values, stable ties, accessible sort state,
+refreshed package labels, independent table state, and contained scrolling.
+Use a CLI fixture with more timed occurrences than `--slowest` permits to
+verify that package and duration sorting retain the selected longest attempts,
+including repeated test names. Pair it with unit cases for disabled, single,
+and larger limits and preservation of source ordering.
+Keep screenshots, PDFs, and failure traces in the ignored
 `scripts/browser/test-results/` directory. These checks qualify Chromium and
 WebKit test reports, not coverage-explorer interactions or other browser engines.
 

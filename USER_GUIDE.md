@@ -285,6 +285,10 @@ incomplete evidence.
 
 Plain and Markdown output stream package and test lifecycle events as they
 arrive, including subtests, repeated occurrences, pause/resume, and completion.
+Package headings establish context for the following test and log lines, so
+each line shows the test name without repeating its package path. Context is
+shown again when output switches packages or resumes after a stage, stderr,
+or unattributed output.
 Package completion lines include elapsed time and occurrence counts. Test and
 build log text and child stderr appear with scope prefixes; terminal controls
 and Markdown syntax are escaped. Go controls when it emits events and logs:
@@ -344,7 +348,7 @@ benchmarks.
 `test_output.html` is self-contained: CSS, script, normalized results, and
 bounded output are embedded locally. It provides:
 
-- package, status, and text filtering;
+- separate package, test name, and output filters, plus **Clear all filters**;
 - direct status filtering for failed and incomplete results;
 - a Flat / Nested view toggle, with expandable subtest branches;
 - repeated-occurrence labels;
@@ -353,10 +357,36 @@ bounded output are embedded locally. It provides:
 - duration source and weighted coverage;
 - output truncation notices pointing to the raw JSONL.
 
+Collapsed test rows show the test name, duration, status, and **Output** control
+on one compact line when space permits. Expand **Output** (or **Details** for
+tests without logs) to inspect occurrence details, duration source, attributes,
+and artifact paths. Failed and incomplete panels start open; incomplete reasons
+and truncation notices remain visible. Package names appear at the group level.
+
+**Slowest occurrences** and **Weighted coverage by file** start sorted by
+**Package**, ascending. Click any column heading to sort it; click again to
+reverse the order. Text sorts alphanumerically (`Test2` before `Test10`), while
+durations, statement counts, and percentages sort by their exact numeric
+values. Unavailable coverage stays last. Coverage has separate **Package** and
+**File** columns, and both tables show package names once per consecutive
+group. The slowest table still selects the longest durations using `--slowest`;
+choose **Duration** to order those rows by time. Each table keeps its sort when
+you clear filters, switch views, or print.
+
+Use **Package**, **Test name**, and **Output** together to narrow results.
+Each field matches literal text without regard to case and ignores leading
+and trailing spaces. Results must match every filled field and the selected
+**Status**. Package matches package names, including build import paths;
+Test name matches full test/subtest names across repeated attempts; Output
+searches retained logs and diagnostic messages/previews. Filtering uses the
+redacted text shown in the report. **Clear all filters** empties all three
+fields and resets Status to **All statuses**, preserving your chosen view,
+collapsed branches, and open output panels.
+
 Use **View → Nested** to group subtests beneath their recorded parent
 occurrence. Repeated runs remain separate, including when a child runs only
 on some attempts. **Expand all**, **Collapse all**, and the subtest buttons
-control the branches. Search and status filters temporarily reveal matching
+control the branches. Text and status filters temporarily reveal matching
 branches and their ancestors; clearing the filters restores your collapsed
 branches. Switching views preserves filters and open output panels. Flat is
 the default on each page load. Without JavaScript, the report keeps the flat

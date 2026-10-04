@@ -36,6 +36,7 @@ func (c *Console) Stage(message string) error {
 	if c.quiet || c.format == ConsoleJSON {
 		return nil
 	}
+	c.livePackageSet = false
 	return writeConsole(c.writer, c.liveLine("tested", message))
 }
 
@@ -51,9 +52,9 @@ func (c *Console) Event(update result.Progress) (bool, error) {
 		return false, nil
 	}
 	var text strings.Builder
-	label := string(update.Scope) + " " + c.renderer.redact(update.Package)
+	label := string(update.Scope)
 	if update.Test != nil {
-		label += fmt.Sprintf("::%s [occurrence %d]", c.renderer.redact(update.Test.Name), update.Test.Ordinal)
+		label += fmt.Sprintf(" %s [occurrence %d]", c.renderer.redact(update.Test.Name), update.Test.Ordinal)
 	}
 	if update.Diagnostics > 0 {
 		text.WriteString(c.liveLine("diagnostic", fmt.Sprintf("%d new integrity diagnostics; inspect the final report", update.Diagnostics)))
@@ -82,7 +83,29 @@ func (c *Console) Event(update result.Progress) (bool, error) {
 		c.outputClipped = true
 		text.WriteString(c.liveLine("tested", "Log preview truncated by result limits; complete bytes remain in test_output.jsonl"))
 	}
-	return c.writeDetail(text.String())
+	if text.Len() == 0 {
+		return false, nil
+	}
+	// Package identity is context for a contiguous group, not a prefix on every
+	// test/log line. Compare original identities so redaction collisions still
+	// produce a new context. Emit context and its event in one bounded write.
+	scoped := update.Package != "" || update.Scope == result.OutputPackage ||
+		update.Scope == result.OutputTest || update.Scope == result.OutputBuild
+	detail := text.String()
+	if scoped && (!c.livePackageSet || c.livePackage != update.Package) {
+		name := c.renderer.redact(update.Package)
+		if update.Package == "" {
+			name = "(package name unavailable)"
+		}
+		detail = c.formatLiveLine("package", name) + detail
+	}
+	written, err := c.writeDetail(detail)
+	if err != nil {
+		c.livePackageSet = false
+	} else if written && !c.liveLimited {
+		c.livePackage, c.livePackageSet = update.Package, scoped
+	}
+	return written, err
 }
 
 // Stderr displays already captured child stderr. It never owns raw capture.
@@ -95,7 +118,11 @@ func (c *Console) Stderr(value string) (bool, error) {
 	if c.quiet || c.format == ConsoleJSON || c.liveLimited {
 		return false, nil
 	}
-	return c.writeDetail(c.logLines("stderr", value))
+	written, err := c.writeDetail(c.logLines("stderr", value))
+	if err != nil || written {
+		c.livePackageSet = false
+	}
+	return written, err
 }
 
 func (c *Console) logLines(label, value string) string {

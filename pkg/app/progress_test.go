@@ -429,6 +429,16 @@ func TestExecuteLivePresentationModes(t *testing.T) {
 			if strings.Contains(got, "Preparing test artifacts") != test.live || strings.Contains(got, "working before completion") != test.logs || strings.Contains(got, "stderr before completion") != test.logs {
 				t.Fatalf("unexpected live projection: %s", got)
 			}
+			if test.live {
+				context, event := "[package] example/progress", "[run] test TestWork/child"
+				if test.name == "markdown" {
+					context, event = "**package** example/progress", "**run** test TestWork/child"
+				}
+				if !strings.Contains(got, context) || !strings.Contains(got, event) ||
+					strings.Contains(got, "example/progress::TestWork") {
+					t.Fatalf("package context was lost or repeated in test lines: %s", got)
+				}
+			}
 			if test.json {
 				decoder := json.NewDecoder(strings.NewReader(got))
 				var summary map[string]any

@@ -67,16 +67,18 @@ type ConsoleOptions struct {
 
 // Console renders concurrency-safe live and final result output.
 type Console struct {
-	mu            sync.Mutex
-	writer        io.Writer
-	format        ConsoleFormat
-	color         bool
-	quiet         bool
-	renderer      *Renderer
-	liveBytes     int
-	liveLimited   bool
-	logsOmitted   bool
-	outputClipped bool
+	mu             sync.Mutex
+	writer         io.Writer
+	format         ConsoleFormat
+	color          bool
+	quiet          bool
+	renderer       *Renderer
+	liveBytes      int
+	liveLimited    bool
+	logsOmitted    bool
+	outputClipped  bool
+	livePackage    string
+	livePackageSet bool
 }
 
 // NewConsole validates options and creates a console renderer.
@@ -147,6 +149,7 @@ func (c *Console) Package(pkg result.Package) error {
 	if c.quiet || c.format == ConsoleJSON {
 		return nil
 	}
+	c.livePackageSet = false
 
 	name := c.renderer.redact(pkg.Name)
 	status := string(pkg.Status)
@@ -197,6 +200,7 @@ func (c *Console) Final(input Input) error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.livePackageSet = false
 	if c.format == ConsoleJSON {
 		return c.renderer.RenderSummaryJSON(c.writer, input)
 	}
@@ -400,15 +404,21 @@ func (c *Console) writeMarkdownFinal(view reportView, input Input) error {
 	if len(view.Slowest) > 0 {
 		output.WriteString("\n## Slowest occurrences\n\n")
 		output.WriteString("| Package | Occurrence | Duration | Source |\n| --- | --- | ---: | --- |\n")
-		for _, slow := range view.Slowest {
+		var previousPackage string
+		for i, slow := range view.Slowest {
+			name := escapeMarkdown(slow.Package)
+			if i > 0 && slow.Package == previousPackage {
+				name = "↳"
+			}
 			fmt.Fprintf(
 				&output,
 				"| %s | %s | %s | %s |\n",
-				escapeMarkdown(slow.Package),
+				name,
 				escapeMarkdown(slow.Label),
 				escapeMarkdown(slow.Duration),
 				escapeMarkdown(slow.DurationSource),
 			)
+			previousPackage = slow.Package
 		}
 	}
 	return writeConsole(c.writer, output.String())
@@ -756,15 +766,19 @@ func writePlainSlowest(output *bytes.Buffer, slowest []slowView) {
 		return
 	}
 	output.WriteString("Slowest occurrences:\n")
-	for _, slow := range slowest {
+	var previousPackage string
+	for i, slow := range slowest {
+		if i == 0 || slow.Package != previousPackage {
+			fmt.Fprintf(output, "  %s\n", neutralizeTerminalInline(slow.Package))
+		}
 		fmt.Fprintf(
 			output,
-			"  - %s %s: %s (%s)\n",
-			neutralizeTerminalInline(slow.Package),
+			"    - %s: %s (%s)\n",
 			neutralizeTerminalInline(slow.Label),
 			neutralizeTerminalInline(slow.Duration),
 			neutralizeTerminalInline(slow.DurationSource),
 		)
+		previousPackage = slow.Package
 	}
 }
 
