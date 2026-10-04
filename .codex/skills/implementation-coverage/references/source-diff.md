@@ -24,7 +24,13 @@ aggregate source/diff bytes, hunks, lines, and line length. Propagate
 cancellation through every owned Git process and reject missing commits,
 shallow-clone omissions, ambiguous mappings, malformed Git output, source
 mutation, and exceeded bounds without publishing a misleading comparison.
-Keep coverage reporting unchanged when no baseline is requested. Treat
+Reuse a successfully published comparison for the test report's package-level
+change filter; do not resolve the revision again or compare a second worktree
+snapshot. Return no usable comparison after coverage publication fails. Pass
+only current-profile membership and redacted baseline context into test HTML,
+never source hunks or deleted text. Keep test-file-only edits outside this
+coverage-scoped model. Keep coverage reporting unchanged when no baseline is
+requested. Treat
 baseline source as sensitive unredacted coverage content because it can reveal
 secrets removed from current source.
 

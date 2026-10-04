@@ -25,8 +25,11 @@ Run a non-publishing GoReleaser snapshot during tagged-release preflight using
 the same pinned version and configuration as publication. Require each archive
 to include `LICENSE`, `README.md`, `USER_GUIDE.md`, and `SECURITY.md`; verify
 the generated checksum set and execute the native preflight binary's version
-and help commands. Stamp the full RFC 3339 `.CommitDate`, not a date-only
-substring, together with `.FullCommit`.
+and help commands. Stamp `.FullCommit`, with a dirty suffix for dirty snapshots,
+and identify empty/HEAD branches as detached. Use GoReleaser's full RFC 3339
+`.Date` as the build timestamp; `.CommitDate` is a commit timestamp and must not
+be labeled as build time. Build timestamps intentionally vary between release
+invocations; keep archive modification times pinned to `.CommitTimestamp`.
 
 For the GitHub tag workflow, require the tagged commit to be an ancestor of
 `origin/main`. Verify the exact Linux, Darwin, and Windows amd64/arm64 archive

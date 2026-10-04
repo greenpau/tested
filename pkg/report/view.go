@@ -16,6 +16,7 @@ package report
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +29,8 @@ import (
 
 type reportView struct {
 	Title                string
+	BasePackage          string
+	Changes              *changeFilterView
 	Finalized            bool
 	Outcome              string
 	Packages             []packageView
@@ -47,6 +50,9 @@ type reportView struct {
 
 type packageView struct {
 	Name                string
+	Label               string
+	Changed             bool
+	Coverage            *coverageView
 	Status              string
 	StatusClass         string
 	Duration            string
@@ -70,6 +76,8 @@ type occurrenceView struct {
 	HTMLID              string
 	ParentHTMLID        string
 	Package             string
+	PackageLabel        string
+	Changed             bool
 	Name                string
 	Label               string
 	Ordinal             uint64
@@ -92,6 +100,8 @@ type occurrenceView struct {
 
 type buildView struct {
 	ImportPath          string
+	Label               string
+	Changed             bool
 	Status              string
 	StatusClass         string
 	Output              string
@@ -141,17 +151,19 @@ type coverageView struct {
 }
 
 type coverageFileView struct {
-	Name       string
-	Package    string
-	File       string
-	Statements uint64
-	Covered    uint64
-	Percentage string
-	Available  bool
+	Name         string
+	Package      string
+	PackageLabel string
+	File         string
+	Statements   uint64
+	Covered      uint64
+	Percentage   string
+	Available    bool
 }
 
 type slowView struct {
 	Package        string
+	PackageLabel   string
 	Name           string
 	Label          string
 	Ordinal        uint64
@@ -165,6 +177,7 @@ type slowView struct {
 func (r *Renderer) buildView(input Input) reportView {
 	view := reportView{
 		Title:                r.redact(r.title),
+		BasePackage:          r.redact(r.basePackage),
 		Finalized:            input.Result.Finalized,
 		Outcome:              outcome(input),
 		Summary:              input.Result.Summary,
@@ -179,14 +192,21 @@ func (r *Renderer) buildView(input Input) reportView {
 	}
 
 	packages := append([]result.Package(nil), input.Result.Packages...)
+	changes, changedPackages := r.buildChangeFilter(input)
+	view.Changes = changes
+	packageCoverage := buildPackageCoverageViews(input.Coverage)
 	sort.SliceStable(packages, func(i, j int) bool {
 		return packages[i].Name < packages[j].Name
 	})
 	for _, pkg := range packages {
 		packageOutput := sortedOutput(pkg.Output)
 		durationKnown := knownDuration(pkg.Elapsed, pkg.DurationSource)
+		name := r.redact(pkg.Name)
 		pkgView := packageView{
-			Name:                r.redact(pkg.Name),
+			Name:                name,
+			Label:               r.packageLabel(pkg.Name, name),
+			Changed:             changedPackages[pkg.Name],
+			Coverage:            packageCoverage[pkg.Name],
 			Status:              string(pkg.Status),
 			StatusClass:         statusClass(pkg.Status),
 			Duration:            formatDuration(pkg.Elapsed, durationKnown),
@@ -216,8 +236,11 @@ func (r *Renderer) buildView(input Input) reportView {
 		for _, test := range tests {
 			output := sortedOutput(test.Output)
 			durationKnown := knownDuration(test.Elapsed, test.DurationSource)
+			packageName := r.redact(test.ID.Package)
 			testView := occurrenceView{
-				Package:             r.redact(test.ID.Package),
+				Package:             packageName,
+				PackageLabel:        r.packageLabel(test.ID.Package, packageName),
+				Changed:             changedPackages[test.ID.Package],
 				Name:                r.redact(test.ID.Name),
 				Label:               r.redact(occurrenceLabel(test.ID.Name, test.ID.Ordinal)),
 				Ordinal:             test.ID.Ordinal,
@@ -241,6 +264,7 @@ func (r *Renderer) buildView(input Input) reportView {
 			if test.Elapsed > 0 {
 				view.Slowest = append(view.Slowest, slowView{
 					Package:        testView.Package,
+					PackageLabel:   testView.PackageLabel,
 					Name:           testView.Name,
 					Label:          testView.Label,
 					Ordinal:        testView.Ordinal,
@@ -261,8 +285,11 @@ func (r *Renderer) buildView(input Input) reportView {
 		return builds[i].ImportPath < builds[j].ImportPath
 	})
 	for _, build := range builds {
+		name := r.redact(build.ImportPath)
 		view.Builds = append(view.Builds, buildView{
-			ImportPath:          r.redact(build.ImportPath),
+			ImportPath:          name,
+			Label:               r.packageLabel(build.ImportPath, name),
+			Changed:             changedPackages[build.ImportPath],
 			Status:              string(build.Status),
 			StatusClass:         statusClass(build.Status),
 			Output:              r.redactOutput(joinOutput(sortedOutput(build.Output)), build.OutputTruncated),
@@ -380,24 +407,73 @@ func (r *Renderer) buildCoverageView(profile *coverage.Profile) *coverageView {
 		// Split only the redacted presentation: a rule spanning a path separator
 		// must not be bypassed by redacting its directory and basename separately.
 		name := r.redact(file.Name)
-		pkg, base := ".", name
-		if separator := strings.LastIndexAny(name, `/\`); separator >= 0 {
-			pkg, base = name[:separator], name[separator+1:]
-			if pkg == "" {
-				pkg = name[:1]
-			}
+		pkg, base := splitCoveragePath(name)
+		originalPackage, _ := splitCoveragePath(file.Name)
+		if strings.ContainsAny(file.Name, `/\`) && !strings.ContainsAny(name, `/\`) {
+			// Redaction removed the directory. A basename-only fallback would
+			// falsely identify this file as belonging to the module root.
+			pkg = ""
 		}
 		view.Files = append(view.Files, coverageFileView{
-			Name:       name,
-			Package:    pkg,
-			File:       base,
-			Statements: file.Totals.Statements,
-			Covered:    file.Totals.Covered,
-			Percentage: filePercentage,
-			Available:  fileAvailable,
+			Name:         name,
+			Package:      pkg,
+			PackageLabel: r.packageLabel(originalPackage, pkg),
+			File:         base,
+			Statements:   file.Totals.Statements,
+			Covered:      file.Totals.Covered,
+			Percentage:   filePercentage,
+			Available:    fileAvailable,
 		})
 	}
 	return view
+}
+
+func splitCoveragePath(name string) (pkg, file string) {
+	if separator := strings.LastIndexAny(name, `/\`); separator >= 0 {
+		pkg, file = name[:separator], name[separator+1:]
+		if pkg == "" {
+			pkg = name[:1]
+		}
+		return pkg, file
+	}
+	return ".", name
+}
+
+// Match exact, original profile directories to package import paths before
+// redaction can merge identities. Unmapped paths remain unavailable; do not
+// guess from a basename, suffix, working directory, or printed percentage.
+func buildPackageCoverageViews(profile *coverage.Profile) map[string]*coverageView {
+	if profile == nil {
+		return nil
+	}
+	packages := make(map[string]*coverageView)
+	for _, file := range profile.Files {
+		name, _ := splitCoveragePath(file.Name)
+		view, exists := packages[name]
+		if exists && view == nil {
+			continue // An invalid group must not regain a partial percentage.
+		}
+		if !exists {
+			view = &coverageView{}
+			packages[name] = view
+		}
+		if file.Totals.Covered > file.Totals.Statements ||
+			file.Totals.Statements > math.MaxUint64-view.Statements ||
+			file.Totals.Covered > math.MaxUint64-view.Covered {
+			packages[name] = nil
+			continue
+		}
+		view.Statements += file.Totals.Statements
+		view.Covered += file.Totals.Covered
+	}
+	for _, view := range packages {
+		if view != nil {
+			view.Percentage, view.Available = formatCoveragePercentage(coverage.Totals{
+				Covered: view.Covered, Statements: view.Statements,
+			})
+		}
+	}
+	return packages
 }
 
 func buildCoverageTotalView(profile *coverage.Profile) *coverageView {

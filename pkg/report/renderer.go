@@ -39,6 +39,8 @@ type Options struct {
 	RedactPatterns         []string
 	Slowest                int
 	MaxFailureExcerptBytes int
+	// BasePackage shortens HTML package labels at exact import-path boundaries.
+	BasePackage string
 }
 
 // Input is one immutable semantic snapshot and its optional coverage profile.
@@ -46,11 +48,14 @@ type Input struct {
 	Result     result.Result
 	Coverage   *coverage.Profile
 	Assessment *Assessment
+	// CoverageDiff is the successfully published coverage source comparison.
+	CoverageDiff *coverage.Diff
 }
 
 // Renderer creates artifact projections without modifying primary evidence.
 type Renderer struct {
 	title                  string
+	basePackage            string
 	redactors              redactionExpressions
 	slowest                int
 	maxFailureExcerptBytes int
@@ -88,6 +93,7 @@ func New(options Options) (*Renderer, error) {
 
 	return &Renderer{
 		title:                  title,
+		basePackage:            options.BasePackage,
 		redactors:              redactors,
 		slowest:                options.Slowest,
 		maxFailureExcerptBytes: maxFailureExcerptBytes,

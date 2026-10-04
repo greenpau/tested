@@ -17,6 +17,7 @@
 <a class="skip-link" href="#report-content">Skip to report content</a>
 <div class="report-shell">
 <header class="page-header">
+<nav class="report-navigation" aria-label="Report navigation"><a href="index.html">← Report index</a></nav>
 <div class="title-row">
 <div class="title-copy">
 <p class="eyebrow">tested · Go test report</p>
@@ -51,6 +52,7 @@
 </header>
 <div class="section-body">
 <dl class="assessment-list">
+<div><dt>Base package</dt><dd class="mono">{{if $.BasePackage}}{{$.BasePackage}}{{else}}unavailable{{end}}</dd></div>
 <div><dt>Child process</dt><dd>{{if .ChildExitKnown}}Exit status recorded{{if .ChildExitInferred}} (inferred){{end}}{{else}}Exit status unavailable{{end}}</dd></div>
 <div><dt>Raw capture</dt><dd>{{if .EvidenceIncomplete}}Incomplete; inspect raw evidence and diagnostics{{else}}Complete{{end}}</dd></div>
 {{with .CoveragePolicy}}<div><dt>Coverage policy</dt><dd>Minimum {{.Minimum}}%; actual {{.ActualPercentage}}{{if .Available}} ({{.Covered}} / {{.Statements}} weighted statements){{end}} — {{if .Satisfied}}satisfied{{else}}not satisfied{{end}}</dd></div>{{end}}
@@ -81,24 +83,40 @@
 <button id="clear-filters" type="button">Clear all filters</button>
 </div>
 <div id="tree-controls" class="tree-controls" hidden><button id="expand-tests" type="button">Expand all</button><button id="collapse-tests" type="button">Collapse all</button><span class="meta">Subtests follow their recorded parent occurrence. Filters reveal matching branches.</span></div>
+<div class="filter-summary">
+{{with .Changes}}<div class="test-visibility tested-coverage-field">
+<span class="tested-coverage-field-label">Visibility</span>
+<label class="tested-coverage-switch"><input id="changed-packages-only" type="checkbox" role="switch" aria-controls="report-content" aria-describedby="changed-packages-description"{{if not .Packages}} disabled{{end}}><span class="tested-coverage-switch-track" aria-hidden="true"></span><span>Changed packages only</span><span class="tested-coverage-switch-count" aria-hidden="true">{{.Packages}}</span></label>
+<span id="changed-packages-description" class="sr-only">{{.Packages}} packages with changed covered source files since {{.BaseCommit}}. Includes all tests in those packages. Run-wide diagnostics remain visible.</span>
+</div>{{end}}
 <p id="match-count" class="meta" aria-live="polite"></p>
+</div>
 </div>
 
 <main id="report-content" class="report-main" data-view="flat">
 <section class="report-section" aria-labelledby="packages-heading">
-<div class="section-title"><h2 id="packages-heading">Packages and test occurrences</h2><p>Passing output is collapsed when JavaScript is enabled; failed and incomplete output stays open.</p></div>
+<div class="section-title">
+<div class="packages-title-row"><h2 id="packages-heading">Packages and test occurrences</h2>
+{{if .Packages}}<button id="toggle-packages" type="button" aria-controls="package-list" aria-expanded="true" hidden>Collapse all packages</button>
+<div class="package-sorting" hidden><label for="package-sort">Sort packages</label><select id="package-sort"><option value="name">Name</option><option value="status">Status</option><option value="coverage">Coverage</option><option value="duration">Duration</option></select><button id="package-sort-direction" type="button" aria-label="Ascending order; sort packages descending">Ascending ↑</button><span id="package-sort-status" class="sr-only" aria-live="polite"></span></div>{{end}}
+</div><p>Passing output is collapsed when JavaScript is enabled; failed and incomplete output stays open.</p></div>
 {{if .Packages}}
-{{range .Packages}}
-<article class="package-card filterable" data-status="{{.StatusClass}}" data-package="{{.Name}}">
+<div id="package-list" class="package-list">
+{{range $index, $package := .Packages}}
+<article class="package-row filterable" data-changed="{{.Changed}}" data-status="{{.StatusClass}}" data-package="{{.Name}}" data-package-label="{{.Label}}" data-duration="{{if .DurationKnown}}{{.DurationNanos}}{{end}}"{{with .Coverage}}{{if .Available}} data-covered="{{.Covered}}" data-statements="{{.Statements}}"{{end}}{{end}}>
 <header class="package-header">
-<div class="heading">
-<div><h3>{{.Name}}</h3><p>{{if .DurationKnown}}duration {{.Duration}}{{if .DurationSource}} ({{.DurationSource}}){{end}}{{else}}duration unavailable{{if .DurationSource}} ({{.DurationSource}}){{end}}{{end}}{{if .Cached}} · cached{{end}}{{if .NoTests}} · no tests{{end}}{{if .FailedBuild}} · failed build {{.FailedBuild}}{{end}}{{if .IncompleteReason}} · {{.IncompleteReason}}{{end}}</p></div>
+<button class="package-toggle" type="button" aria-expanded="true" aria-controls="package-{{$index}}-contents" aria-describedby="package-{{$index}}-name" hidden><span aria-hidden="true">▾</span><span class="sr-only">Hide package contents</span></button>
+<div class="package-identity"><h3 id="package-{{$index}}-name" title="{{.Name}}">{{.Label}}</h3></div>
+<div class="package-metrics"><span class="package-duration" title="{{if .DurationKnown}}Duration source: {{.DurationSource}}{{else}}Duration unavailable{{end}}">Duration {{if .DurationKnown}}{{.Duration}}{{else}}unavailable{{end}}</span>
+<span class="package-coverage"{{with .Coverage}}{{if .Available}} title="{{.Covered}} of {{.Statements}} weighted statements covered"{{end}}{{end}}>Coverage {{if .Coverage}}{{.Coverage.Percentage}}{{else}}unavailable{{end}}</span></div>
 <strong class="status-pill {{.StatusClass}}">{{.Status}}</strong>
-</div>
+{{if or .Cached .NoTests .FailedBuild .IncompleteReason}}<p class="package-notes">{{if .Cached}}<span>cached</span>{{end}}{{if .NoTests}}<span>no tests</span>{{end}}{{if .FailedBuild}}<span>failed build {{.FailedBuild}}</span>{{end}}{{if .IncompleteReason}}<span>{{.IncompleteReason}}</span>{{end}}</p>{{end}}
 </header>
+<div class="package-contents" id="package-{{$index}}-contents">
+{{if or .Output .OutputTruncated .Attributes .Artifacts (not .Tests)}}
 <div class="package-body">
-{{if or .Output .OutputTruncated}}<details open data-collapse><summary>Package output</summary>{{if .Output}}<pre data-filter-output>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes. Inspect test_output.jsonl for complete evidence.</p>{{end}}</details>{{end}}
-{{if or .Attributes .Artifacts}}<details open data-collapse><summary>Package metadata</summary>
+{{if or .Output .OutputTruncated}}<details open{{if not (or (eq .StatusClass "failed") (eq .StatusClass "incomplete"))}} data-collapse{{end}}><summary>Package output</summary>{{if .Output}}<pre data-filter-output>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes. Inspect test_output.jsonl for complete evidence.</p>{{end}}</details>{{end}}
+{{if or .Attributes .Artifacts}}<details open{{if not (or (eq .StatusClass "failed") (eq .StatusClass "incomplete"))}} data-collapse{{end}}><summary>Package metadata</summary>
 {{if .Attributes}}<h4>Attributes</h4><div class="table-scroll"><table><thead><tr><th scope="col">Record</th><th scope="col">Key</th><th scope="col">Value</th></tr></thead><tbody>
 {{range .Attributes}}<tr><td>{{.Sequence}}{{if .Line}} (line {{.Line}}){{end}}</td><td><code>{{.Key}}</code></td><td>{{.Value}}</td></tr>{{end}}
 </tbody></table></div>{{end}}
@@ -108,9 +126,10 @@
 </details>{{end}}
 {{if not .Tests}}<p class="empty">No named test occurrences.</p>{{end}}
 </div>
+{{end}}
 {{if .Tests}}<div class="test-list">
 {{range .Tests}}
-<article class="test-row filterable" id="{{.HTMLID}}" data-parent="{{.ParentHTMLID}}" data-status="{{.StatusClass}}" data-package="{{.Package}}" data-test="{{.Name}}">
+<article class="test-row filterable" data-changed="{{.Changed}}" id="{{.HTMLID}}" data-parent="{{.ParentHTMLID}}" data-status="{{.StatusClass}}" data-package="{{.Package}}" data-package-label="{{.PackageLabel}}" data-test="{{.Name}}">
 <div class="test-content">
 <div class="test-heading">
 <h4 id="{{.HTMLID}}-name">{{.Label}}</h4>
@@ -135,8 +154,10 @@
 </article>
 {{end}}
 </div>{{end}}
+</div>
 </article>
 {{end}}
+</div>
 {{else}}<div class="section-card"><div class="section-body"><p class="empty">No package events were decoded.</p></div></div>{{end}}
 </section>
 
@@ -144,8 +165,8 @@
 <section class="report-section" aria-labelledby="builds-heading">
 <div class="section-title"><h2 id="builds-heading">Build events</h2><p>Package compilation evidence emitted by the Go toolchain.</p></div>
 {{range .Builds}}
-<article class="build-card filterable" data-status="{{.StatusClass}}" data-package="{{.ImportPath}}">
-<header class="build-header"><div class="heading"><h3>{{.ImportPath}}</h3><strong class="status-pill {{.StatusClass}}">{{.Status}}</strong></div></header>
+<article class="build-card filterable" data-changed="{{.Changed}}" data-status="{{.StatusClass}}" data-package="{{.ImportPath}}" data-package-label="{{.Label}}">
+<header class="build-header"><div class="heading"><h3 title="{{.ImportPath}}">{{.Label}}</h3><strong class="status-pill {{.StatusClass}}">{{.Status}}</strong></div></header>
 <div class="build-body">{{if .Output}}<pre data-filter-output>{{.Output}}</pre>{{end}}{{if .OutputTruncated}}<p class="notice">Build output truncated: retained {{.OutputRetainedBytes}} of {{.OutputBytes}} bytes.</p>{{end}}</div>
 </article>
 {{end}}</section>
@@ -178,7 +199,7 @@
 <section class="section-card" aria-labelledby="coverage-heading">
 <header class="section-header"><h2 id="coverage-heading">Weighted coverage by file</h2><p>{{.Covered}} of {{.Statements}} weighted statements covered · {{.Percentage}} · mode {{.Mode}}.</p></header>
 <div class="table-scroll">{{if .Files}}<table class="sortable-table" aria-labelledby="coverage-heading"><thead><tr><th scope="col" data-sort="text" aria-sort="ascending">Package</th><th scope="col" data-sort="text">File</th><th scope="col" data-sort="number">Covered statements</th><th scope="col" data-sort="number">Total statements</th><th scope="col" data-sort="ratio">Coverage</th></tr></thead><tbody>
-{{$previousPackage := ""}}{{range $index, $file := .Files}}<tr><td class="mono"><span data-package-label{{if and $index (eq .Package $previousPackage)}} class="sr-only"{{end}}>{{.Package}}</span></td><td class="mono" title="{{.Name}}">{{.File}}</td><td class="tabular" data-sort-value="{{.Covered}}">{{.Covered}}</td><td class="tabular" data-sort-value="{{.Statements}}">{{.Statements}}</td><td class="tabular" data-sort-covered="{{.Covered}}" data-sort-total="{{.Statements}}">{{.Percentage}}</td></tr>{{$previousPackage = .Package}}{{end}}
+{{range .Files}}<tr><td class="mono" title="{{.Package}}"><span data-package-label>{{.PackageLabel}}</span></td><td class="mono" title="{{.Name}}">{{.File}}</td><td class="tabular" data-sort-value="{{.Covered}}">{{.Covered}}</td><td class="tabular" data-sort-value="{{.Statements}}">{{.Statements}}</td><td class="tabular" data-sort-covered="{{.Covered}}" data-sort-total="{{.Statements}}">{{.Percentage}}</td></tr>{{end}}
 </tbody></table>{{else}}<div class="section-body"><p class="empty">The profile contains no source blocks.</p></div>{{end}}</div>
 </section>
 {{end}}
@@ -187,7 +208,7 @@
 <section class="section-card" aria-labelledby="slowest-heading">
 <header class="section-header"><h2 id="slowest-heading">Slowest occurrences</h2><p>Longest measured or estimated test durations retained in this report.</p></header>
 <div class="table-scroll"><table class="sortable-table" aria-labelledby="slowest-heading"><thead><tr><th scope="col" data-sort="text" aria-sort="ascending">Package</th><th scope="col" data-sort="text">Occurrence</th><th scope="col" data-sort="number">Duration</th><th scope="col" data-sort="text">Source</th><th scope="col" data-sort="text">Status</th></tr></thead><tbody>
-{{$previousPackage := ""}}{{range $index, $slow := .Slowest}}<tr><td class="mono"><span data-package-label{{if and $index (eq .Package $previousPackage)}} class="sr-only"{{end}}>{{.Package}}</span></td><td class="mono">{{.Label}}</td><td class="tabular" data-sort-value="{{.DurationNanos}}">{{.Duration}}</td><td>{{.DurationSource}}</td><td><span class="status-pill {{.StatusClass}}">{{.Status}}</span></td></tr>{{$previousPackage = .Package}}{{end}}
+{{range .Slowest}}<tr><td class="mono" title="{{.Package}}"><span data-package-label>{{.PackageLabel}}</span></td><td class="mono">{{.Label}}</td><td class="tabular" data-sort-value="{{.DurationNanos}}">{{.Duration}}</td><td>{{.DurationSource}}</td><td><span class="status-pill {{.StatusClass}}">{{.Status}}</span></td></tr>{{end}}
 </tbody></table></div></section>
 {{end}}
 </main>

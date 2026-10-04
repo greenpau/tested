@@ -45,6 +45,25 @@ Install from source:
 go install github.com/greenpau/tested@latest
 ```
 
+For full build provenance, install from a Git checkout using Make:
+
+```bash
+git clone https://github.com/greenpau/tested.git
+cd tested
+make install
+tested version
+```
+
+`make install` honors Go's `GOBIN` setting (or the first `GOPATH` entry's
+`bin` directory) and records the version, full commit, branch, UTC build time,
+and builder. Use `GOBIN=/your/bin make install` to select a destination.
+`make build` records the same metadata in `bin/tested`.
+
+A plain `go install ...@version` records the module version but usually omits
+Git and build provenance. `tested version` uses the metadata embedded in the
+executable and labels unavailable fields `not recorded`; it cannot recover
+information that was never embedded.
+
 Run every package in the current module:
 
 ```bash

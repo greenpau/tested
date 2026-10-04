@@ -83,7 +83,7 @@ func TestRendererSecuritySemanticsAndDeterminism(t *testing.T) {
 		"[hidden] {",
 		"details > * {",
 		`class="summary-grid"`,
-		`class="package-card filterable"`,
+		`class="package-row filterable"`,
 		`class="test-row filterable"`,
 		`class="status-pill failed"`,
 		`scope="col"`,
@@ -1053,7 +1053,8 @@ func TestKnownZeroDurationRemainsDistinctFromUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
-		"duration 0s (go_elapsed)",
+		`data-duration="0"`,
+		`title="Duration source: go_elapsed">Duration 0s`,
 		"duration unavailable (unknown)",
 		`<dt>Benchmarks</dt><dd class="passed">1</dd>`,
 	} {

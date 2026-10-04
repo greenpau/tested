@@ -452,8 +452,10 @@ func executeReport(
 		!outcome.state.InfrastructureErr &&
 		!outcome.state.EvidenceIncomplete &&
 		!evidenceContradictsChild
+	var coverageDiff *coverage.Diff
 	if useCoverage && profile != nil {
-		if coverageReportErr := publishCoverageReport(
+		var coverageReportErr error
+		coverageDiff, coverageReportErr = publishCoverageReport(
 			ctx,
 			options.GoBinary,
 			layout,
@@ -462,7 +464,8 @@ func executeReport(
 			profile,
 			options.CoverageDiffBase,
 			progress,
-		); coverageReportErr != nil {
+		)
+		if coverageReportErr != nil {
 			outcome.errors.add(coverageReportErr)
 			outcome.state.ReportErr = true
 			manifestEligible = false
@@ -477,9 +480,10 @@ func executeReport(
 		coveragePolicy,
 	)
 	input := report.Input{
-		Result:     snapshot,
-		Coverage:   profile,
-		Assessment: assessment,
+		Result:       snapshot,
+		Coverage:     profile,
+		Assessment:   assessment,
+		CoverageDiff: coverageDiff,
 	}
 	refreshReports := func() {
 		progress.stage("Refreshing reports after an error or cancellation")
@@ -690,21 +694,22 @@ func publishCoverageReport(
 	profile *coverage.Profile,
 	coverageDiffBase string,
 	progress *liveProgress,
-) error {
+) (*coverage.Diff, error) {
 	if renderer == nil {
-		return errors.New("publish coverage report: renderer is nil")
+		return nil, errors.New("publish coverage report: renderer is nil")
 	}
 	if profilePath == "" {
 		profilePath = layout.CoverageProfile
 	}
 	progress.stage("Generating coverage.html with Go cover")
+	var comparison *coverage.Diff
 	decorate := func(ctx context.Context, source io.Reader, destination io.Writer) error {
 		progress.stage("Decorating coverage.html")
 		return renderer.DecorateCoverageHTML(ctx, source, destination)
 	}
 	if coverageDiffBase != "" {
 		if profile == nil {
-			return errors.New(
+			return nil, errors.New(
 				"publish coverage report: coverage profile is nil",
 			)
 		}
@@ -731,6 +736,7 @@ func publishCoverageReport(
 				)
 			}
 			progress.stage("Decorating coverage.html with source comparison")
+			comparison = diff
 			return renderer.DecorateCoverageHTMLWithDiff(
 				ctx,
 				source,
@@ -739,13 +745,17 @@ func publishCoverageReport(
 			)
 		}
 	}
-	return coverage.GenerateHTML(ctx, coverage.HTMLOptions{
+	err := coverage.GenerateHTML(ctx, coverage.HTMLOptions{
 		GoCommand:   goCommand,
 		ProjectDir:  layout.WorkDir,
 		ProfilePath: profilePath,
 		OutputPath:  layout.CoverageHTML,
 		Decorate:    decorate,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return comparison, nil
 }
 
 func resultFailed(snapshot result.Result) bool {

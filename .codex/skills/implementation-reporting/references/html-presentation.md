@@ -52,12 +52,76 @@ case-insensitive natural collator. Compare durations as exact nanoseconds and
 statement counts as exact integers; compare coverage ratios by exact cross
 multiplication, never formatted percentages. Keep unavailable coverage last in
 both directions and equal values in their initial visible order. Reuse row
-nodes and recompute visible package labels after every sort: show the package
-once per consecutive group, retaining hidden text in repeated cells for
-assistive technology. Keep the two tables independent and preserve sorting
+nodes and keep every package cell visible, including repeated package names
+and `.` for the module root. Never suppress repeated labels after sorting.
+Keep the two tables independent and preserve sorting
 through filter clearing, view switching, and printing. Keep numeric cells on
 one line and contain horizontal scrolling within each table. Without JavaScript,
 render static tables in lexical package order with no inactive sort buttons.
+
+## Display module-relative package names
+
+Use the optional module path supplied by app orchestration as HTML presentation
+context; never infer it from the shortest observed package or a common prefix.
+Show this full, redacted path as Base package in Run assessment, or unavailable
+when absent. Shorten exact root matches to `.` and slash-delimited descendants
+to relative names in package/build headings and both summary tables. Preserve
+unrelated and similarly prefixed import paths. Retain full redacted identities
+in tooltips and searchable data; allow filters to match displayed labels too.
+Sort by visible labels. Missing identities must not become an invented root.
+
+Match original identities before redaction can merge them, then derive labels
+from complete redacted identities. Redact a coverage file's entire path before
+splitting or shortening it, so separator-spanning rules cannot expose secrets.
+If that redaction removes the directory entirely, show an unavailable package;
+do not reinterpret the redacted basename as the module root or recover the
+directory by redacting its original text separately.
+Keep raw evidence, coverage association, occurrence hierarchy, JSON, JUnit,
+and console identities unchanged. Retain deterministic rendering for a fixed
+base-module context and the fully labeled no-script/print fallback. Inspect
+[HTML projections](../../../../pkg/report/html.go) and
+[module discovery](../../../../pkg/app/module.go).
+
+## Present compact package rows
+
+Render packages in one continuous bordered list with grey header rows, without
+separate card gaps or per-package rounding. Keep the package name at the left;
+group duration beside weighted coverage at the right, followed by status on
+the same desktop row. Keep ordinary short headers at roughly 40px; allow long
+names, narrow screens, and critical
+package notes to wrap. Preserve cached/no-tests flags, failed-build context,
+incomplete reasons, and duration provenance. Do not add empty body padding to
+packages that contain only tests.
+
+Calculate package coverage from validated file statement weights, matching
+original profile directories to exact result package import paths before
+redaction. Never average percentages, include subpackages in a parent total,
+or guess unmapped paths from suffixes. Show unavailable for absent, empty,
+unmapped, or invalid/overflowed groups; retain measured zero coverage and
+duration as numeric values. Keep this presentation separate from coverage
+policy and raw evidence. Inspect [package projections](../../../../pkg/report/view.go)
+and [HTML tests](../../../../pkg/report/html_test.go).
+
+Use native buttons with deterministic numeric content IDs, `aria-controls`,
+`aria-expanded`, and package-name context for each package disclosure. Hide the
+complete package body and tests together, preserving native details and subtest
+collapse state. Start failed/incomplete package output and metadata expanded,
+just as failed/incomplete test evidence starts expanded. Preserve a user's
+subsequent details choices through both individual and global package toggles.
+Provide Collapse/Expand all packages beside the section title;
+if any package is expanded, collapse all, otherwise expand all. Apply this to
+filtered-out packages too. Keep package collapse independent of filters and
+subtest disclosures; clear-all, sorting, and view changes preserve it.
+
+Offer Name, Status, Coverage, and Duration in a labeled sort dropdown, defaulting
+to Name ascending. Start new fields ascending and expose a keyboard-accessible
+direction button with a polite sort announcement. Include the visible direction
+in the button's accessible name along with the action. Use natural text, exact
+nanoseconds/ratios, missing values last in either direction, and ascending name
+then original order for ties. Move package nodes without rebuilding them. Keep
+these controls absent when there are no packages, and hidden without JavaScript.
+Print all package contents and restore screen state; print rules must hide
+disclosure/sort controls even in the no-script fallback.
 
 ## Preserve test hierarchy across view changes
 
@@ -92,17 +156,19 @@ Use redacted package/test identities, including build import paths and full
 test names without attempt suffixes. Search retained output plus diagnostic
 messages/previews, excluding presentation labels and metadata. Cache each row's
 own output before nesting, and restrict package output to its package body so
-descendants cannot create false matches. Rows without a package or test
+descendants cannot create false matches. Treat absent package bodies as empty
+output. Rows without a package or test
 identity cannot directly match a nonempty filter for that field.
 
 Reveal matching tests' packages and, in Nested view, ancestors as context.
-Count direct matches independently of context rows and collapse state. Active
-filters must reveal matching branches, temporarily disable collapse controls,
-and restore the user's branch state when cleared. Keep build and integrity
+Count direct matches independently of context rows and collapse state. Within
+expanded packages, filters reveal matching branches and temporarily disable
+subtest collapse controls; clearing filters restores the user's branch state.
+Keep build and integrity
 evidence filterable in both layouts. Clear all filters must reset all three
-text fields and Status together without changing the view, saved branch state,
-or open details. Let the expanded mobile toolbar scroll with the page so it
-does not obscure results on narrow screens.
+text fields, Status, and the changed-packages switch together without changing
+the view, package sort and collapse state, saved branch state, or open details. Let the expanded mobile
+toolbar scroll with the page so it does not obscure results on narrow screens.
 
 Keep behavior offline and self-contained, with no storage or network access.
 Without JavaScript, hide inactive controls and retain the flat report with
@@ -111,6 +177,36 @@ closed details through print CSS alone: with scripts enabled, open details
 for `beforeprint` and restore them after printing; without scripts, preserve
 the expanded static fallback. Print rules must hide controls even when a
 generic `[hidden]` override reveals filtered results.
+
+## Navigate and filter by the shared source comparison
+
+Provide a fixed relative `index.html` link at the top of the test report and
+through the coverage page's progressive script. Build the coverage link with
+DOM methods before validating the canonical explorer structure, so it remains
+available when the explorer falls back. Do not alter Go-authored source bytes
+or relax the removable head-injection contract. Test-report navigation works
+without scripts; the canonical no-script coverage fallback remains unchanged.
+Hide navigation in print and retain keyboard focus styling.
+
+Offer Changed packages only using the exact comparison successfully published
+with coverage HTML. Never invoke another Git comparison, infer a default
+baseline, or embed source hunks/deleted text in the test report. Match current
+profile file identities to exact original package directories before redaction;
+include modified, added, renamed (even without hunks), and untracked files.
+Exclude unchanged, unavailable, unknown, and non-profile identities. A changed
+subpackage must not mark its parent; redaction collisions must not merge
+membership. Count matching packages retained in the result.
+
+Use the coverage switch's visual style and native checkbox/switch semantics.
+Start off, hide without a valid explicit comparison, and disable at zero
+matching packages. AND this filter with the existing fields/status, preserving
+package collapse and open output while temporarily revealing nested branches.
+Keep unscoped diagnostics/output inspectable. Clear-all resets it; printing
+reveals all evidence, and the no-script fallback stays fully expanded. Full-run
+counts and summary tables remain unchanged. Document package-level scope and
+the exclusion of test-file-only edits; do not imply per-test impact analysis.
+Inspect [change projection](../../../../pkg/report/html.go) and
+[report orchestration](../../../../pkg/app/report.go).
 
 ## Preserve the canonical coverage presentation
 
@@ -197,6 +293,8 @@ redacted identities, natural/exact numeric table sorting, slowest selection
 limits, independent and combined filters, field isolation, clear/reset state,
 missing parents, incomplete/build-only/empty evidence, keyboard focus, print, mobile/light/dark
 layouts, no-script fallback, and deterministic offline rerendering. Inspect its
-screenshots as well as assertions; it does not qualify the coverage explorer or
-other browser engines. Keep previews disposable and report unverified modes
+screenshots as well as assertions. Local Git fixtures also qualify shared
+change membership, coverage changed-file selection, and report-index navigation,
+including coverage explorer fallback. Other coverage explorer interactions and
+browser engines remain outside that suite's qualification. Keep previews disposable and report unverified modes
 explicitly. Do not install browser tooling for a prose-only edit.

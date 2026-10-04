@@ -34,10 +34,10 @@ builds:
     ldflags:
       - -s -w
       - -X main.appVersion={{ .Version }}
-      - -X main.gitBranch={{ .Branch }}
-      - -X main.gitCommit={{ .FullCommit }}
+      - -X main.gitBranch={{ if or (not .Branch) (eq .Branch "HEAD") }}detached{{ else }}{{ .Branch }}{{ end }}
+      - -X main.gitCommit={{ .FullCommit }}{{ if .IsGitDirty }}-dirty{{ end }}
       - -X main.buildUser=goreleaser
-      - -X main.buildDate={{ .CommitDate }}
+      - -X main.buildDate={{ .Date }}
 
 archives:
   - id: tested

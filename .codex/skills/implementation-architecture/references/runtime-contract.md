@@ -6,6 +6,14 @@ algorithms and verification at each boundary.
 
 ## Product responsibilities
 
+- Resolve version identity in [app build metadata](../../../../pkg/app/build.go)
+  from explicit linker stamps first, then immutable Go executable metadata.
+  Recover module versions and VCS revision/dirty state when available; respect
+  module replacements and do not turn `(devel)` into a release. Label missing
+  provenance `not recorded` and explain the stamped `make install` path.
+  Keep VCS commit time distinct from build time. Never inspect the runtime
+  working directory's Git state, current user, clock, or executable mtime to
+  manufacture build identity. Preserve terminal sanitization of version output.
 - Parse the `tested` command line without rewriting arguments intended for the
   Go tool. Support the default/`run`, `report`, `version`, and help surfaces;
   prefer Go arguments after `--` as the unambiguous form. Also preserve the
@@ -23,6 +31,21 @@ algorithms and verification at each boundary.
 - Resolve a working directory independently from an output directory. Run Go
   commands and `go tool cover` in the selected working directory so package and
   source paths retain their Go-module meaning.
+  Supply the nearest local `go.mod` module directive as optional HTML base-package
+  context, walking upward from that working directory and stopping at the first
+  existing module boundary. Bound reads to 1 MiB and skip unreadable, oversized,
+  symlinked, nonregular, or malformed module context without changing execution
+  status. Extract a single top-level module directive; skip dependency blocks,
+  including openings without a separating space, so a dependency named `module`
+  cannot become the base package. Reject duplicate directives and unclosed
+  blocks. Check the complete bounded read and file identity, size, and
+  modification time before accepting context. This remains a best-effort
+  context reader, not a validator for all Go module syntax.
+  Do not invoke Go, fetch dependencies, or infer a module from observed
+  test packages for this presentation lookup. It does not resolve workspace or
+  alternate-modfile overrides; unmatched packages retain full names. Inspect
+  [module discovery](../../../../pkg/app/module.go) and
+  [boundary tests](../../../../pkg/app/module_test.go).
 - Start the child from an argv vector, stream stdout and stderr without shell
   interpolation, persist raw evidence before interpreting it, and propagate
   cancellation to the complete child process tree.
@@ -110,7 +133,10 @@ algorithms and verification at each boundary.
    satisfied. Compare the exact decimal ratio without binary floating point or
    display rounding. Invoke `go tool cover` from the run working directory for
    its annotated HTML, then stream it through the report-owned fixed
-   presentation decorator before atomic publication.
+   presentation decorator before atomic publication. Reuse the same successfully
+   published comparison in the test report's changed-package filter; withhold
+   that filter on comparison or coverage publication failure. Do not rerun Git
+   or change normalized results/exit policy for this presentation.
 8. Persist `run.json` only after raw files close, with explicit start, exit,
    signal, cancellation, capture-integrity, issue, coverage-policy, and raw-file
    binding fields. Never infer offline success from an unbound event stream.

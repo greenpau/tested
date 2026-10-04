@@ -17,15 +17,7 @@ all: info build
 
 .PHONY: info
 info:
-	@git_branch="$$(git symbolic-ref --quiet --short HEAD 2>/dev/null || \
-		printf '%s' unknown)"; \
-	git_commit="$$(git describe --dirty --always 2>/dev/null || \
-		printf '%s' unknown)"; \
-	build_user="$$(whoami)"; \
-	build_date="$$(date -u +"%Y-%m-%dT%H:%M:%SZ")"; \
-	printf 'Version: %s, Branch: %s, Revision: %s\n' \
-		'$(APP_VERSION)' "$$git_branch" "$$git_commit"; \
-	printf 'Build on %s by %s\n' "$$build_date" "$$build_user"
+	@sh ./scripts/build.sh info '$(APP_VERSION)'
 
 .PHONY: version-check
 version-check:
@@ -44,25 +36,17 @@ skills-check:
 
 .PHONY: build
 build:
-	@mkdir -p ./bin
-	@rm -f $(BINARY)
-	@git_branch="$$(git symbolic-ref --quiet --short HEAD 2>/dev/null || \
-		printf '%s' unknown)"; \
-	git_commit="$$(git describe --dirty --always 2>/dev/null || \
-		printf '%s' unknown)"; \
-	build_user="$$(whoami)"; \
-	build_date="$$(date -u +"%Y-%m-%dT%H:%M:%SZ")"; \
-	CGO_ENABLED=0 go build -trimpath -o $(BINARY) \
-		-ldflags="-s -w \
-		-X main.appVersion=$(APP_VERSION) \
-		-X main.gitBranch=$$git_branch \
-		-X main.gitCommit=$$git_commit \
-		-X main.buildUser=$$build_user \
-		-X main.buildDate=$$build_date" \
-		.
-	@$(BINARY) version
-	@$(BINARY) help >/dev/null
+	@sh ./scripts/build.sh build '$(APP_VERSION)' '$(BINARY)'
 	@echo "$@: complete"
+
+.PHONY: install
+install:
+	@sh ./scripts/build.sh install '$(APP_VERSION)'
+	@echo "$@: complete"
+
+.PHONY: e2e-version
+e2e-version:
+	@go test -v -count=1 -tags=integration -run '^TestVersionBuild' .
 
 .PHONY: linter
 linter:
@@ -116,6 +100,7 @@ test:
 
 .PHONY: e2e
 e2e: build
+	@$(MAKE) e2e-version
 	@echo "$@: started"
 	@rm -rf ./testdata/fixture/.coverage
 	@$(BINARY) run -C ./testdata/fixture --minimum-coverage 1 -- -count=2 ./...

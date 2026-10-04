@@ -212,8 +212,26 @@ tested version
 tested help
 ```
 
-Release builds include the semantic version, Git branch and commit, build user,
-build time, and Go runtime version.
+Release builds and `make build` / `make install` include the semantic version,
+Git branch and full commit, build user, UTC build time, and Go runtime version.
+`-dirty` on the commit identifies a checkout with uncommitted changes, including
+untracked files. `detached` identifies a checkout without an active branch.
+
+`make install` installs into Go's configured `GOBIN`, falling back to the first
+`GOPATH` entry's `bin` directory. For example, from a Git checkout:
+
+```bash
+GOBIN="$HOME/dev/bin" make install
+"$HOME/dev/bin/tested" version
+```
+
+Plain Go builds use Go's embedded module version and VCS metadata when present.
+Explicit linker stamps take precedence. Go does not record the branch, build
+timestamp, or builder by default; `go install ...@version` also usually omits
+the commit. Missing values are shown as `not recorded`, with a suggestion to
+use `make install`. Any embedded VCS timestamp is labeled **commit time**,
+separately from **built**. Version reporting never queries the current working
+directory, current user, or executable modification time to guess provenance.
 
 ## Artifact lifecycle
 
@@ -357,6 +375,31 @@ bounded output are embedded locally. It provides:
 - duration source and weighted coverage;
 - output truncation notices pointing to the raw JSONL.
 
+Packages appear in one continuous list with grey headers. Each header shows
+the package name, with duration beside weighted coverage and status at the right.
+HTML package names are relative to the module declared in the nearest `go.mod`
+in or above the selected working directory. For example, `github.com/greenpau/tested`
+becomes `.`, and `github.com/greenpau/tested/internal/tag` becomes `internal/tag`.
+**Run assessment → Base package** shows the full module name. Full package
+paths remain available on hover and in the Package filter. Packages outside
+that module keep their full names; if the module cannot be read, full names
+remain and Base package shows **unavailable**.
+The arrow in a header hides or shows that package's output, metadata, and tests.
+**Collapse all packages** beside **Packages and test occurrences** reduces the
+list to package headers; **Expand all packages** restores the contents.
+These controls affect all packages, including those hidden by filters, and
+preserve open output panels and collapsed subtest branches. Filters do not
+automatically reopen a package you collapsed.
+
+**Sort packages** offers **Name**, **Status**, **Coverage**, and **Duration**.
+Name ascending is the default. Selecting a field starts ascending; use the
+direction button to reverse it. Names and statuses sort alphanumerically;
+coverage and duration use exact numeric values. Unavailable values stay last
+in both directions. Sorting preserves filters and disclosure state.
+Package coverage sums statement weights from matching files without including
+subpackages. Missing or zero-statement coverage shows **unavailable**; imported
+profile paths that cannot be matched exactly to a package also remain unavailable.
+
 Collapsed test rows show the test name, duration, status, and **Output** control
 on one compact line when space permits. Expand **Output** (or **Details** for
 tests without logs) to inspect occurrence details, duration source, attributes,
@@ -368,8 +411,8 @@ and truncation notices remain visible. Package names appear at the group level.
 reverse the order. Text sorts alphanumerically (`Test2` before `Test10`), while
 durations, statement counts, and percentages sort by their exact numeric
 values. Unavailable coverage stays last. Coverage has separate **Package** and
-**File** columns, and both tables show package names once per consecutive
-group. The slowest table still selects the longest durations using `--slowest`;
+**File** columns, and both tables show the package name in every row,
+including `.` for the module root. The slowest table still selects the longest durations using `--slowest`;
 choose **Duration** to order those rows by time. Each table keeps its sort when
 you clear filters, switch views, or print.
 
@@ -380,8 +423,20 @@ and trailing spaces. Results must match every filled field and the selected
 Test name matches full test/subtest names across repeated attempts; Output
 searches retained logs and diagnostic messages/previews. Filtering uses the
 redacted text shown in the report. **Clear all filters** empties all three
-fields and resets Status to **All statuses**, preserving your chosen view,
-collapsed branches, and open output panels.
+fields, resets Status to **All statuses**, and turns off the change filter,
+preserving your chosen view,
+package sorting, collapsed packages/branches, and open output panels.
+
+With `--coverage-diff-base REV`, **Changed packages only** shows all tests in
+packages with modified, added, renamed, or untracked covered source files,
+using the same comparison as Coverage source. The badge counts matching
+packages in this report. This is a package-level view: edits only to test files
+are outside the coverage source comparison. The switch combines with the
+other filters, starts off, and is disabled when no reported package matches.
+It is absent without a successfully generated comparison. Filtering preserves
+package/output/branch state; run-wide diagnostics remain inspectable. Run totals
+and summary tables still describe the complete run, and printing reveals all
+tests.
 
 Use **View → Nested** to group subtests beneath their recorded parent
 occurrence. Repeated runs remain separate, including when a child runs only
@@ -396,7 +451,10 @@ even when filtered or collapsed on screen. The toggle works when opening the
 file directly.
 
 `index.html`, `test_output.html`, and `coverage.html` share a compact
-operational theme with no remote dependencies. The pages respond to narrow
+operational theme with no remote dependencies. **Report index** at the top of
+the test report and enhanced Coverage source page returns to `index.html`.
+The test-report link also works without JavaScript; coverage navigation is part
+of its progressive enhancement. The pages respond to narrow
 viewports, honor the system dark-mode preference, use monospaced text for exact
 diagnostic values, expose visible keyboard focus, and provide print styles.
 All report-owned HTML, CSS, and JavaScript sources are compiled into the

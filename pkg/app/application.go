@@ -62,6 +62,7 @@ func Execute(
 		}
 		return ExitSuccess
 	case cli.CommandVersion:
+		buildInfo = buildInfo.withRuntime()
 		if _, err := io.WriteString(
 			stdout,
 			report.SanitizeTerminalText(buildInfo.String()),
@@ -84,7 +85,7 @@ func Execute(
 			title = "tested report"
 		}
 	}
-	renderer, console, err := newPresentation(options, title, stdout)
+	renderer, console, err := newPresentation(options, title, modulePackage(layout.WorkDir), stdout)
 	if err != nil {
 		writeDiagnostic(stderr, err.Error())
 		return ExitInfrastructure
@@ -108,10 +109,12 @@ func Execute(
 func newPresentation(
 	options cli.Options,
 	title string,
+	basePackage string,
 	stdout io.Writer,
 ) (*report.Renderer, *report.Console, error) {
 	renderer, err := report.New(report.Options{
 		Title:          title,
+		BasePackage:    basePackage,
 		RedactPatterns: options.RedactPatterns,
 		Slowest:        options.Slowest,
 	})

@@ -281,8 +281,10 @@ func executeRun(
 		statusWritten = true
 	}
 
+	var coverageDiff *coverage.Diff
 	if !options.NoCoverage && profile != nil {
-		if coverageReportErr := publishCoverageReport(
+		var coverageReportErr error
+		coverageDiff, coverageReportErr = publishCoverageReport(
 			ctx,
 			options.GoBinary,
 			layout,
@@ -291,7 +293,8 @@ func executeRun(
 			profile,
 			options.CoverageDiffBase,
 			progress,
-		); coverageReportErr != nil {
+		)
+		if coverageReportErr != nil {
 			outcome.errors.add(coverageReportErr)
 			outcome.state.ReportErr = true
 		}
@@ -306,9 +309,10 @@ func executeRun(
 		coveragePolicy,
 	)
 	input := report.Input{
-		Result:     snapshot,
-		Coverage:   profile,
-		Assessment: assessment,
+		Result:       snapshot,
+		Coverage:     profile,
+		Assessment:   assessment,
+		CoverageDiff: coverageDiff,
 	}
 	evidenceContradictsChild := outcome.state.EvidenceFailed &&
 		outcome.state.ChildExitKnown &&

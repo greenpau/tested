@@ -63,6 +63,15 @@ Apply the same calculation per file and for the aggregate. Never average file
 or package percentages. Keep integer numerator and denominator in the model and
 round only in a renderer using one documented rule.
 
+For package-level presentations, sum validated file totals whose original
+profile directory exactly matches the result package import path. Match before
+presentation redaction and keep child-package totals separate. Never guess a
+mapping from a basename or suffix. Preserve unavailable coverage for missing,
+unmapped, zero-statement, or invalid/overflowed groups instead of displaying
+zero or a partial sum. The [report projection](../../../../pkg/report/view.go)
+and [its tests](../../../../pkg/report/html_test.go) own the header presentation;
+this grouping does not change profile evidence or the aggregate policy decision.
+
 Represent these cases separately:
 
 - coverage disabled by `--no-coverage`;

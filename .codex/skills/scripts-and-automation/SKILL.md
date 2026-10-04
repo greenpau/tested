@@ -28,9 +28,11 @@ The current Make surface is:
 | `make run-race-tests` | Run uncached, verbose race tests, one package at a time. |
 | `make run-shuffle-tests` | Run three verbose shuffled repetitions, one package at a time. |
 | `make build` | Replace `bin/tested`, stamp version metadata, check version/help. |
+| `make install` | Stamp and install through Go's GOBIN/GOPATH selection; print the installed path and check version/help. |
 | `make self-test` | Build, replace root `.coverage`, run with coverage and explicit `HEAD` baseline, then validate its bundle. |
 | `make test` / `make coverage` | Run bootstrap checks followed by one canonical self-test. |
-| `make e2e` | Build and exercise controlled fixtures, offline rerender, failures, bounds, and benchmark/metadata cases. |
+| `make e2e` | Build and exercise version provenance, controlled fixtures, offline rerender, failures, bounds, and benchmark/metadata cases. |
+| `make e2e-version` | Build and execute version scenarios in disposable checkouts and a local module proxy without network access. |
 | `make e2e-browser` | Build and exercise local HTML reports in Chromium/WebKit with explicitly installed Node/Playwright tooling. |
 | `make e2e-go126-metadata` | Exercise Go 1.26 metadata with the already-built binary; explicitly skip on older Go. |
 | `make cross-build` | Compile Linux/Darwin amd64/arm64 and Windows amd64/386/arm64, including Windows test compilation. |

@@ -33,6 +33,24 @@ retain `-shuffle=on -count=3` for shuffled checks. Preserve the selected
 `TEST_DIR` patterns and Go's within-package parallel-test behavior. Validate
 changes to these flags through the actual Make targets and their live output.
 
+Keep local build identity collection shared by `make info`, `make build`, and
+`make install` in [the build script](../../../../scripts/build.sh). Stamp a full
+commit hash, mark tracked or untracked changes dirty, identify detached HEAD,
+and collect the actual UTC build time and builder. Preserve argument boundaries
+through Go's linker-flag parsing; branch text must never execute as shell code.
+Let `go install` choose the destination from GOBIN/GOPATH and print that path.
+Ordinary builds must not implicitly install or publish.
+
+Use `make e2e-version` (also included by `make e2e`) to qualify the actual CLI's
+module metadata fallback, VCS-disabled builds, clean/dirty/detached builds,
+quoted branch names, GOBIN/GOPATH paths containing spaces, and release linker
+templates. The [integration test](../../../../version_integration_test.go)
+uses a temporary file module proxy and private module cache, with networking
+disabled. Pass `-modcacherw` for this disposable cache so test cleanup can remove
+downloaded module directories. These checks exercise built binaries and release
+stamps; they do not replace GoReleaser archive/package preflight or qualify
+installation on an untested native host.
+
 Cross-build the CLI for each supported target without running the foreign
 binary. At minimum, cover Linux, Darwin, and Windows on both amd64 and arm64;
 retain any documented compatibility target such as Windows 386. Keep
@@ -95,14 +113,46 @@ summary tables' default package ordering, natural text ordering, exact duration
 and statement sorting (including integers beyond JavaScript's safe-number
 range), and coverage ratios that display the same rounded percentage. Check
 both directions, unavailable values, stable ties, accessible sort state,
-refreshed package labels, independent table state, and contained scrolling.
+visible package labels in every row after every sort, independent table state,
+and contained scrolling.
 Use a CLI fixture with more timed occurrences than `--slowest` permits to
 verify that package and duration sorting retain the selected longest attempts,
 including repeated test names. Pair it with unit cases for disabled, single,
 and larger limits and preservation of source ordering.
+Qualify the continuous package list separately: duration adjacent to coverage
+at the right of each desktop header, with status alongside,
+per-package and global disclosure (including mixed state and filtered-out
+packages), saved output/branch state, all package sort keys and directions,
+missing-versus-zero metrics, DOM identity, narrow layouts, and print/no-script
+fallbacks. Use unequal per-file statement weights in a real imported profile;
+pair browser checks with unit cases for exact package matching, redaction
+collisions, subpackage exclusion, unavailable evidence, and overflow rejection.
+Exercise module-relative labels from a subdirectory and a subpackage-only run,
+root `.`, external and similarly prefixed packages, full-name tooltips/filtering,
+and Base package in Run assessment. Check that no-script and print retain all
+package labels. Pair browser checks with module-boundary and bounded-file tests,
+whole-path redaction cases, and unchanged JSON/JUnit identities.
+Verify that whole-path redaction can remove a directory without turning a
+coverage row into an apparent module-root file, including after table sorting.
+Exercise a dependency literally named `module` inside a block before the actual
+module directive. Cover optional block whitespace, duplicate directives,
+unclosed blocks, exact/over-limit file sizes, and symlink boundaries in unit
+tests. Check failed and incomplete package output/metadata starting open in both
+browsers, then manually close details and verify package toggles retain that
+choice.
+Use a disposable local Git module to compare both run and offline report modes
+against an explicit baseline. Cover unchanged/modified/rename-only/untracked
+source packages, test-file-only edits, missing baselines and comparison failure.
+Verify shared membership between the test switch and coverage file selector,
+combined filters, reset and saved disclosure state, zero/absent comparison,
+print/no-script fallback, and navigation to the actual local index from both
+pages (including unsupported coverage explorer markup). Activate custom
+switches through their visible labels for pointer tests and focus/Space for
+keyboard tests; the underlying checkbox is visually clipped.
 Keep screenshots, PDFs, and failure traces in the ignored
 `scripts/browser/test-results/` directory. These checks qualify Chromium and
-WebKit test reports, not coverage-explorer interactions or other browser engines.
+WebKit test reports plus the covered navigation/change-selection interactions;
+they do not qualify the entire coverage explorer or other browser engines.
 
 ## Keep CI grounded in the checked-in workflows
 

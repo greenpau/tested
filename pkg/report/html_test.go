@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"html"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,115 @@ import (
 	"github.com/greenpau/tested/pkg/coverage"
 	"github.com/greenpau/tested/pkg/result"
 )
+
+func TestHTMLPackageFailureEvidenceStartsOpen(t *testing.T) {
+	renderer, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []result.Status{result.StatusPassed, result.StatusFailed, result.StatusIncomplete} {
+		t.Run(string(state), func(t *testing.T) {
+			input := Input{Result: result.Result{Packages: []result.Package{{
+				Name: "example/pkg", Status: state,
+				Output:     []result.Output{{Text: "package evidence"}},
+				Attributes: []result.Attribute{{Key: "owner", Value: "package-owner"}},
+			}}}}
+			var output bytes.Buffer
+			if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+				t.Fatal(err)
+			}
+			for _, label := range []string{"Package output", "Package metadata"} {
+				want := "<details open"
+				if state == result.StatusPassed {
+					want += " data-collapse"
+				}
+				want += "><summary>" + label + "</summary>"
+				if !strings.Contains(output.String(), want) {
+					t.Fatalf("%s lost initial disclosure state for %s", state, label)
+				}
+			}
+		})
+	}
+}
+
+func TestPackageCoverageUsesExactFileWeightsAndOriginalIdentity(t *testing.T) {
+	file := func(name string, covered, total uint64) coverage.FileSummary {
+		return coverage.FileSummary{Name: name, Totals: coverage.Totals{Covered: covered, Statements: total}}
+	}
+	for _, tc := range []struct {
+		name, pkg, percentage string
+		files                 []coverage.FileSummary
+		covered, total        uint64
+	}{
+		{name: "weighted files exclude subpackages", pkg: "example/p", percentage: "10.00%", covered: 10, total: 100,
+			files: []coverage.FileSummary{file("example/p/a.go", 9, 10), file("example/p/b.go", 1, 90), file("example/p/child/c.go", 100, 100)}},
+		{name: "zero covered", pkg: "example/p", percentage: "0.00%", total: 10,
+			files: []coverage.FileSummary{file("example/p/a.go", 0, 10)}},
+		{name: "no profile", pkg: "example/p"},
+		{name: "empty file", pkg: "example/p", files: []coverage.FileSummary{file("example/p/a.go", 0, 0)}},
+		{name: "unmapped absolute path", pkg: "example/p", files: []coverage.FileSummary{file("/work/example/p/a.go", 1, 1)}},
+		{name: "maximum integer", pkg: "example/p", percentage: ">99.99%", covered: math.MaxUint64 - 1, total: math.MaxUint64,
+			files: []coverage.FileSummary{file("example/p/a.go", math.MaxUint64-1, math.MaxUint64)}},
+		{name: "overflow stays unavailable", pkg: "example/p",
+			files: []coverage.FileSummary{file("example/p/a.go", math.MaxUint64, math.MaxUint64), file("example/p/b.go", 1, 1), file("example/p/c.go", 1, 1)}},
+		{name: "invalid weights stay unavailable", pkg: "example/p",
+			files: []coverage.FileSummary{file("example/p/a.go", 2, 1), file("example/p/b.go", 1, 1)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			renderer, err := New(Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := Input{Result: result.Result{Packages: []result.Package{{Name: tc.pkg}}}}
+			if tc.files != nil {
+				input.Coverage = &coverage.Profile{Mode: coverage.ModeSet, Files: tc.files}
+			}
+			got := renderer.buildView(input).Packages[0].Coverage
+			if tc.percentage == "" {
+				if got != nil && got.Available {
+					t.Fatalf("unavailable package gained coverage: %+v", got)
+				}
+			} else if got == nil || !got.Available || got.Covered != tc.covered ||
+				got.Statements != tc.total || got.Percentage != tc.percentage {
+				t.Fatalf("package coverage = %+v, want %d/%d (%s)", got, tc.covered, tc.total, tc.percentage)
+			}
+		})
+	}
+
+	renderer, err := New(Options{RedactPatterns: []string{`secret-(one|two)`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := Input{Result: result.Result{Packages: []result.Package{
+		{Name: "example/secret-one", Elapsed: time.Millisecond, DurationSource: result.DurationGoElapsed},
+		{Name: "example/secret-two", DurationSource: result.DurationGoElapsed},
+	}}, Coverage: &coverage.Profile{Mode: coverage.ModeSet, Files: []coverage.FileSummary{
+		file("example/secret-one/a.go", 9, 10), file("example/secret-two/a.go", 1, 10),
+	}}}
+	view := renderer.buildView(input)
+	if view.Packages[0].Name != view.Packages[1].Name ||
+		view.Packages[0].Coverage.Percentage != "90.00%" || view.Packages[1].Coverage.Percentage != "10.00%" {
+		t.Fatal("redaction merged package coverage")
+	}
+	var output bytes.Buffer
+	if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`data-duration="1000000" data-covered="9" data-statements="10"`,
+		`data-duration="0" data-covered="1" data-statements="10"`,
+		`aria-controls="package-0-contents"`, `aria-controls="package-1-contents"`,
+		`id="package-0-contents"`, `id="package-1-contents"`,
+		`Coverage 90.00%`, `Coverage 10.00%`, `Duration 1ms`, `Duration 0s`,
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("package header missing %q", want)
+		}
+	}
+	if strings.Contains(output.String(), "secret-one") || strings.Contains(output.String(), "secret-two") {
+		t.Fatal("package header exposed original identity")
+	}
+}
 
 func TestCoverageTableSortValuesAndRedactedPaths(t *testing.T) {
 	renderer, err := New(Options{RedactPatterns: []string{`secret/value`}})
@@ -185,9 +295,9 @@ func TestSlowestPackageContextAndDefaultOrder(t *testing.T) {
 				t.Fatal("missing slowest occurrences")
 			}
 			if format == "html" {
-				if strings.Count(slowest, `<span data-package-label>example/p</span>`) != 1 ||
-					strings.Count(slowest, `<span data-package-label class="sr-only">example/p</span>`) != 2 {
-					t.Fatal("HTML repeats package names or loses accessible context")
+				if strings.Count(slowest, `<span data-package-label>example/p</span>`) != 3 ||
+					strings.Contains(slowest, `data-package-label class="sr-only"`) {
+					t.Fatal("HTML package cells must all show their package")
 				}
 			} else if strings.Count(slowest, "example/p") != 2 || strings.Count(slowest, "example/q") != 1 {
 				t.Fatalf("package grouping changed: %s", slowest)
@@ -426,5 +536,197 @@ func TestHTMLHierarchySurvivesRedactionAndSorting(t *testing.T) {
 	}
 	if input.Result.Packages[0].Tests[0].Parent.Name != "Test/secret-b" {
 		t.Fatal("renderer mutated source identity")
+	}
+}
+
+func TestHTMLRelativePackageLabels(t *testing.T) {
+	for _, tc := range []struct{ name, base, original, pattern, want string }{
+		{"root", "example.com/root", "example.com/root", "", "."},
+		{"subpackage", "example.com/root", "example.com/root/internal/tag", "", "internal/tag"},
+		{"similar prefix", "example.com/root", "example.com/root-other/internal", "", "example.com/root-other/internal"},
+		{"empty suffix", "example.com/root", "example.com/root/", "", "example.com/root/"},
+		{"external", "example.com/root", "other.example/root/internal", "", "other.example/root/internal"},
+		{"no base", "", "example.com/root/internal", "", "example.com/root/internal"},
+		{"unknown", "example.com/root", "", "", "unavailable"},
+		{"anchored redaction", "example.com/root", "example.com/root/secret", `^example.com/root/secret$`, "[REDACTED]"},
+		{"redacted base", "example.com/root", "example.com/root/internal", `example.com/root`, "internal"},
+		{"collision", "example.com/secret-root-long", "example.com/secret-other-long/internal", `secret-(root|other)-long`, "example.com/[REDACTED]/internal"},
+		{"hostile", "example.com/root", `example.com/root/<script>&"`, "", `<script>&"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			options := Options{BasePackage: tc.base, Slowest: 10}
+			if tc.pattern != "" {
+				options.RedactPatterns = []string{tc.pattern}
+			}
+			renderer, err := New(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := Input{Assessment: &Assessment{}, Result: result.Result{Packages: []result.Package{{Name: tc.original,
+				Tests: []result.TestOccurrence{{ID: result.OccurrenceID{Package: tc.original, Name: "TestOne", Ordinal: 1}, Elapsed: time.Second}},
+			}}, Builds: []result.Build{{ImportPath: tc.original}}}}
+			view := renderer.buildView(input)
+			if view.Packages[0].Label != tc.want || view.Slowest[0].PackageLabel != tc.want || view.Builds[0].Label != tc.want {
+				t.Fatalf("labels = %q, %q, %q; want %q", view.Packages[0].Label, view.Slowest[0].PackageLabel, view.Builds[0].Label, tc.want)
+			}
+			var output bytes.Buffer
+			if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(output.String(), `<span data-package-label>`+html.EscapeString(tc.want)+`</span>`) {
+				t.Fatal("slowest cell lost escaped package label")
+			}
+			base := renderer.redact(tc.base)
+			if base == "" {
+				base = "unavailable"
+			}
+			if !strings.Contains(output.String(), `<dt>Base package</dt><dd class="mono">`+html.EscapeString(base)+`</dd>`) {
+				t.Fatal("assessment lost redacted base package context")
+			}
+			plainOptions := options
+			plainOptions.BasePackage = ""
+			plain, err := New(plainOptions)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, render := range []func(*Renderer, *bytes.Buffer) error{
+				func(r *Renderer, w *bytes.Buffer) error { return r.RenderSummaryJSON(w, input) },
+				func(r *Renderer, w *bytes.Buffer) error { return r.RenderJUnitXML(w, input) },
+			} {
+				var before, after bytes.Buffer
+				if err := render(plain, &before); err != nil {
+					t.Fatal(err)
+				}
+				if err := render(renderer, &after); err != nil {
+					t.Fatal(err)
+				}
+				if before.String() != after.String() {
+					t.Fatal("HTML labels changed machine identities")
+				}
+			}
+		})
+	}
+}
+
+func TestHTMLCoverageRelativeLabelsRedactWholePaths(t *testing.T) {
+	renderer, err := New(Options{BasePackage: "example.com/root", RedactPatterns: []string{`root/secret`, `root/private/file`, `^example.com/root/hidden/file.go$`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := &coverage.Profile{Files: []coverage.FileSummary{
+		{Name: "example.com/root/file.go"}, {Name: "example.com/root/internal/tag/file.go"},
+		{Name: "example.com/root-other/file.go"}, {Name: "example.com/root/secret/file.go"},
+		{Name: "example.com/root/private/file.go"},
+		{Name: "example.com/root/hidden/file.go"},
+	}}
+	view := renderer.buildCoverageView(profile)
+	want := map[string]string{
+		"example.com/root/file.go":              ".",
+		"example.com/root/internal/tag/file.go": "internal/tag",
+		"example.com/root-other/file.go":        "example.com/root-other",
+		"example.com/[REDACTED]/file.go":        "example.com/[REDACTED]",
+		"example.com/[REDACTED].go":             "example.com",
+		"[REDACTED]":                            "unavailable",
+	}
+	for _, file := range view.Files {
+		if expected, ok := want[file.Name]; !ok || file.PackageLabel != expected {
+			t.Fatalf("coverage file = %+v", file)
+		}
+	}
+}
+
+func TestHTMLChangedPackagesUsePublishedComparisonAndOriginalIdentity(t *testing.T) {
+	renderer, err := New(Options{BasePackage: "example.com/root", RedactPatterns: []string{`secret-(alpha|bravo)-long`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := Input{Coverage: &coverage.Profile{}, CoverageDiff: &coverage.Diff{
+		Schema: coverage.DiffSchema, BaseCommit: strings.Repeat("a", 40),
+	}}
+	for _, tc := range []struct {
+		pkg     string
+		status  coverage.DiffStatus
+		changed bool
+	}{
+		{"secret-alpha-long", coverage.DiffStatusModified, true},
+		{"secret-bravo-long", coverage.DiffStatusUnchanged, false},
+		{"added", coverage.DiffStatusAdded, true},
+		{"rename", coverage.DiffStatusRenamed, true},
+		{"untracked", coverage.DiffStatusUntracked, true},
+		{"unknown", coverage.DiffStatusUnavailable, false},
+		{"future", coverage.DiffStatus("future-status"), false},
+	} {
+		name := "example.com/root/" + tc.pkg
+		input.Result.Packages = append(input.Result.Packages, result.Package{Name: name,
+			Tests: []result.TestOccurrence{{ID: result.OccurrenceID{Package: name, Name: "TestChange", Ordinal: 1}}}})
+		input.Coverage.Files = append(input.Coverage.Files, coverage.FileSummary{Name: name + "/file.go"})
+		input.CoverageDiff.Files = append(input.CoverageDiff.Files, coverage.DiffFile{
+			ProfilePath: name + "/file.go", Status: tc.status,
+			Hunks: []coverage.DiffHunk{{Lines: []coverage.DiffLine{{Text: "deleted-source-must-not-enter-test-html"}}}},
+		})
+		view, changed := renderer.buildChangeFilter(input)
+		if view == nil || changed[name] != tc.changed {
+			t.Fatalf("change classification for %q = %v", name, changed)
+		}
+	}
+	// A changed child does not mark its parent, and a diff outside the current
+	// profile cannot mark a package. Root coverage must not be inferred by suffix.
+	for _, name := range []string{"example.com/root", "example.com/root/not-in-profile"} {
+		input.Result.Packages = append(input.Result.Packages, result.Package{Name: name})
+	}
+	input.CoverageDiff.Files = append(input.CoverageDiff.Files, coverage.DiffFile{
+		ProfilePath: "example.com/root/not-in-profile/a.go", Status: coverage.DiffStatusModified,
+	})
+	view := renderer.buildView(input)
+	if view.Changes == nil || view.Changes.Packages != 4 {
+		t.Fatalf("change count = %+v", view.Changes)
+	}
+	var redactedChanged, redactedUnchanged int
+	for _, pkg := range view.Packages {
+		if strings.Contains(pkg.Name, "[REDACTED]") {
+			if pkg.Changed {
+				redactedChanged++
+			} else {
+				redactedUnchanged++
+			}
+		}
+		for _, occurrence := range pkg.Tests {
+			if occurrence.Changed != pkg.Changed {
+				t.Fatal("test membership differs from its package")
+			}
+		}
+	}
+	if redactedChanged != 1 || redactedUnchanged != 1 {
+		t.Fatal("redaction merged change membership")
+	}
+	var output bytes.Buffer
+	if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"secret-alpha-long", "secret-bravo-long", "deleted-source-must-not-enter-test-html"} {
+		if strings.Contains(output.String(), forbidden) {
+			t.Fatalf("HTML leaked %q", forbidden)
+		}
+	}
+	if !strings.Contains(output.String(), `id="changed-packages-only"`) || !strings.Contains(output.String(), `href="index.html"`) {
+		t.Fatal("missing change filter or index navigation")
+	}
+	input.CoverageDiff.Files = nil
+	output.Reset()
+	if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `aria-describedby="changed-packages-description" disabled`) {
+		t.Fatal("empty baseline comparison must disable the filter")
+	}
+	for _, diff := range []*coverage.Diff{nil, {Schema: "invalid", BaseCommit: "base"}, {Schema: coverage.DiffSchema}} {
+		input.CoverageDiff = diff
+		output.Reset()
+		if err := renderer.RenderTestOutputHTML(&output, input); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(output.String(), `<input id="changed-packages-only"`) {
+			t.Fatal("missing/invalid baseline must not expose a change filter")
+		}
 	}
 }

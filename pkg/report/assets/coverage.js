@@ -18,6 +18,7 @@
 
   function onReady() {
     try {
+      addReportNavigation();
       initialize();
     } catch (ignored) {
       // The Go coverage page remains fully functional when enhancement fails.
@@ -28,6 +29,19 @@
     document.addEventListener("DOMContentLoaded", onReady, false);
   } else {
     window.setTimeout(onReady, 0);
+  }
+
+  function addReportNavigation() {
+    if (!document.body || document.getElementById("tested-report-navigation")) {
+      return;
+    }
+    var nav = createElement("nav", "report-navigation coverage-navigation");
+    nav.id = "tested-report-navigation";
+    nav.setAttribute("aria-label", "Report navigation");
+    var link = createElement("a", "", "← Report index");
+    link.setAttribute("href", "index.html");
+    nav.appendChild(link);
+    document.body.insertBefore(nav, document.body.firstChild);
   }
 
   function initialize() {

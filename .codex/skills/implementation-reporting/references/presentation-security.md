@@ -95,7 +95,7 @@ values; assert that output stays within the redaction growth ceiling.
 ## Make outputs deterministic
 
 For the same normalized snapshot, coverage snapshot, renderer version, title,
-and redaction configuration:
+HTML base-package context, and redaction configuration:
 
 - sort packages, occurrences, diagnostics, coverage files, and manifest entries
   by documented stable keys;

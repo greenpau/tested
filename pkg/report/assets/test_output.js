@@ -7,6 +7,7 @@
   "use strict";
   const filters = ["package", "test", "output"].map(name =>
     document.getElementById("filter-" + name));
+  const changed = document.getElementById("changed-packages-only");
   const clear = document.getElementById("clear-filters");
   const status = document.getElementById("status");
   const count = document.getElementById("match-count");
@@ -17,22 +18,108 @@
   const rows = Array.from(document.querySelectorAll(".filterable"));
   const entries = new Map(rows.map((row) => {
     // Cache only this occurrence's evidence, before nesting adds descendants.
-    const ownContent = row.classList.contains("package-card")
+    const ownContent = row.classList.contains("package-row")
       ? row.querySelector(".package-body") : row;
     return [row, {
       row,
       packageName: (row.dataset.package || "").toLowerCase(),
+      packageLabel: row.dataset.package ? (row.dataset.packageLabel || "").toLowerCase() : "",
       testName: (row.dataset.test || "").toLowerCase(),
-      output: Array.from(ownContent.querySelectorAll("[data-filter-output]"),
+      output: Array.from(ownContent?.querySelectorAll("[data-filter-output]") || [],
         node => node.textContent.toLowerCase()),
       package: row.classList.contains("test-row")
-        ? row.closest(".package-card") : null,
+        ? row.closest(".package-row") : null,
     }];
   }));
   const tests = Array.from(document.querySelectorAll(".test-row"));
   const byID = new Map(tests.map((row) => [row.id, row]));
   const branches = [];
   let nested = false;
+  const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+  const compareValues = (left, right, type, direction) => {
+    // Missing evidence stays last in both directions. Never compare rounded
+    // percentages or convert exact statement counts/nanoseconds to Number.
+    if (left === null || right === null) {
+      return left === right ? 0 : left === null ? 1 : -1;
+    }
+    if (type === "text") return collator.compare(left, right) * direction;
+    const x = type === "ratio" ? left[0] * right[1] : left;
+    const y = type === "ratio" ? right[0] * left[1] : right;
+    return (x < y ? -1 : x > y ? 1 : 0) * direction;
+  };
+
+  const packageList = document.getElementById("package-list");
+  if (packageList) {
+    const toggle = document.getElementById("toggle-packages");
+    const sortSelect = document.getElementById("package-sort");
+    const sortDirection = document.getElementById("package-sort-direction");
+    const packages = Array.from(packageList.children, (row, index) => ({
+      row, index, collapsed: false,
+      content: row.querySelector(".package-contents"),
+      button: row.querySelector(".package-toggle"),
+      values: {
+        name: row.dataset.packageLabel,
+        status: row.dataset.status,
+        duration: row.dataset.duration ? BigInt(row.dataset.duration) : null,
+        coverage: row.dataset.statements
+          ? [BigInt(row.dataset.covered), BigInt(row.dataset.statements)] : null,
+      },
+    }));
+    const updatePackages = () => {
+      const expanded = packages.some(pkg => !pkg.collapsed);
+      toggle.textContent = expanded ? "Collapse all packages" : "Expand all packages";
+      toggle.setAttribute("aria-expanded", String(expanded));
+      for (const pkg of packages) {
+        pkg.content.hidden = pkg.collapsed;
+        pkg.button.setAttribute("aria-expanded", String(!pkg.collapsed));
+        pkg.button.firstElementChild.textContent = pkg.collapsed ? "▸" : "▾";
+        pkg.button.lastElementChild.textContent = pkg.collapsed
+          ? "Show package contents" : "Hide package contents";
+      }
+    };
+    for (const pkg of packages) {
+      pkg.button.addEventListener("click", () => {
+        pkg.collapsed = !pkg.collapsed;
+        updatePackages();
+      });
+      pkg.button.hidden = false;
+    }
+    toggle.addEventListener("click", () => {
+      const collapse = packages.some(pkg => !pkg.collapsed);
+      for (const pkg of packages) pkg.collapsed = collapse;
+      updatePackages();
+    });
+    let direction = 1;
+    const sortPackages = () => {
+      const key = sortSelect.value;
+      const type = key === "coverage" ? "ratio" : key === "duration" ? "number" : "text";
+      packages.sort((a, b) => compareValues(a.values[key], b.values[key], type, direction) ||
+        collator.compare(a.values.name, b.values.name) || a.index - b.index);
+      for (const pkg of packages) packageList.append(pkg.row);
+      sortDirection.textContent = direction === 1 ? "Ascending ↑" : "Descending ↓";
+      sortDirection.setAttribute("aria-label", direction === 1
+        ? "Ascending order; sort packages descending" : "Descending order; sort packages ascending");
+    };
+    const announceSort = () => {
+      document.getElementById("package-sort-status").textContent =
+        "Packages sorted by " + sortSelect.selectedOptions[0].textContent +
+        (direction === 1 ? ", ascending" : ", descending");
+    };
+    sortSelect.addEventListener("change", () => {
+      direction = 1;
+      sortPackages();
+      announceSort();
+    });
+    sortDirection.addEventListener("click", () => {
+      direction *= -1;
+      sortPackages();
+      announceSort();
+    });
+    sortPackages();
+    updatePackages();
+    toggle.hidden = false;
+    document.querySelector(".package-sorting").hidden = false;
+  }
 
   // Expanded static markup keeps all evidence printable without JavaScript,
   // including engines whose closed-details content cannot be revealed by CSS.
@@ -83,13 +170,14 @@
     const [packageTerm, testTerm, outputTerm] = filters.map(input =>
       input.value.trim().toLowerCase());
     const state = status.value;
-    const filtering = Boolean(packageTerm || testTerm || outputTerm || state);
+    const filtering = Boolean(packageTerm || testTerm || outputTerm || state || changed?.checked);
     let matches = 0;
     for (const entry of entries.values()) {
-      const matched = (!packageTerm || entry.packageName.includes(packageTerm)) &&
+      const matched = (!packageTerm || entry.packageName.includes(packageTerm) || entry.packageLabel.includes(packageTerm)) &&
         (!testTerm || entry.testName.includes(testTerm)) &&
         (!outputTerm || entry.output.some(text => text.includes(outputTerm))) &&
-        (!state || entry.row.dataset.status === state);
+        (!state || entry.row.dataset.status === state) &&
+        (!changed?.checked || !entry.packageName || entry.row.dataset.changed === "true");
       entry.row.hidden = !matched;
       if (matched) matches++;
     }
@@ -144,13 +232,14 @@
   });
   for (const input of filters) input.addEventListener("input", apply);
   status.addEventListener("change", apply);
+  changed?.addEventListener("change", apply);
   clear.addEventListener("click", () => {
     for (const input of filters) input.value = "";
     status.value = "";
+    if (changed) changed.checked = false;
     apply();
   });
 
-  const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
   for (const table of document.querySelectorAll(".sortable-table")) {
     const headers = Array.from(table.querySelectorAll("thead th[data-sort]"));
     const body = table.tBodies[0];
@@ -179,27 +268,9 @@
       const type = headers[active].dataset.sort;
       records.sort((a, b) => {
         const left = a.values[active], right = b.values[active];
-        // Unavailable evidence stays last in either direction. Compare exact
-        // integers/ratios, never rounded percentages or formatted durations.
-        if (left === null || right === null) {
-          return left === right ? a.index - b.index : left === null ? 1 : -1;
-        }
-        let order;
-        if (type === "text") order = collator.compare(left, right);
-        else {
-          const x = type === "ratio" ? left[0] * right[1] : left;
-          const y = type === "ratio" ? right[0] * left[1] : right;
-          order = x < y ? -1 : x > y ? 1 : 0;
-        }
-        return order * direction || a.index - b.index;
+        return compareValues(left, right, type, direction) || a.index - b.index;
       });
-      let previousPackage = null;
-      for (const { row } of records) {
-        const label = row.querySelector("[data-package-label]");
-        label.classList.toggle("sr-only", label.textContent === previousPackage);
-        previousPackage = label.textContent;
-        body.append(row);
-      }
+      for (const { row } of records) body.append(row);
       headers.forEach((header, column) => {
         if (column === active) header.setAttribute("aria-sort", direction === 1 ? "ascending" : "descending");
         else header.removeAttribute("aria-sort");
